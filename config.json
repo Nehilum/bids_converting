@@ -1,0 +1,138 @@
+{
+    "subjects": {
+        "Carol": {
+            "folderName": "Carol",
+            "formalName": "Monkey C",
+            "OperationDay": "20221222",
+            "BrokenChannels": [
+                "CH26"
+            ],
+            "ReferenceChannels": [
+                "CH11",
+                "CH27"
+            ],
+            "RemappedChannels": {},
+            "start_date": "20221222",
+            "end_date": "20240414",
+            "ReferenceStartDay": "20230203",
+            "StimulationDays": [
+                "20240415",
+                "20240601",
+                "20240801"
+            ],
+            "ProgressiveChannels": {},
+            "StimulationChannelSets": [
+                [
+                    6,
+                    12,
+                    22,
+                    28,
+                    29
+                ],
+                [
+                    1,
+                    5,
+                    17,
+                    21
+                ],
+                [
+                    2,
+                    3,
+                    19,
+                    23
+                ]
+            ],
+            "NeighborChannelSets": [
+                [
+                    2,
+                    5,
+                    7,
+                    13,
+                    18,
+                    21,
+                    23,
+                    30
+                ],
+                [
+                    2,
+                    6,
+                    12,
+                    18,
+                    22,
+                    28
+                ],
+                [
+                    1,
+                    6,
+                    7,
+                    8,
+                    22,
+                    24,
+                    30
+                ]
+            ],
+            "FunctionalMappingDays": [
+                "20230829",
+                "20231006",
+                "20240531",
+                "20240801"
+            ],
+            "new_chair_date": "20230627"
+        },
+        "Boss": {
+            "folderName": "Boss",
+            "formalName": "Monkey B",
+            "OperationDay": "20230711",
+            "ReferenceChannels": [
+                "CH11",
+                "CH27"
+            ],
+            "BrokenChannels": [
+                "CH09"
+            ],
+            "ProgressiveChannels": {
+                "CH04": {
+                    "QuestionStartDate": "20240917",
+                    "BadAfter": "20241114"
+                }
+            },
+            "StimulationDays": [
+                "20241213"
+            ],
+            "StimulationChannelSets": [
+                [
+                    5,
+                    12,
+                    21,
+                    28
+                ]
+            ],
+            "NeighborChannelSets": [
+                [
+                    1,
+                    6,
+                    13,
+                    17,
+                    22,
+                    29
+                ]
+            ],
+            "RemappedChannels": {
+                "CH01": "CH09",
+                "CH09": "CH01"
+            },
+            "start_date": "20230711",
+            "end_date": "20241217",
+            "FunctionalMappingDays": [
+                "20230807",
+                "20230905",
+                "20230922",
+                "20231122",
+                "20231228",
+                "20240205",
+                "20240531",
+                "20240801"
+            ]
+        }
+    }
+}

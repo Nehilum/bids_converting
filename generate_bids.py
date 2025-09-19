@@ -1,42 +1,97 @@
 # -*- coding: utf-8 -*-
-"""
-Optimized generate_bids.py
-Function:
-    Reads experimental data (e.g., from subjects "Boss" and "Carol"), converts it to BIDS-compliant format,
-    and generates corresponding EDF, JSON, and TSV files.
-"""
 
+from datetime import datetime
+import chardet
 import logging
+import shutil
 import json
 import csv
-import shutil
-from datetime import datetime
-from pathlib import Path
-from typing import Dict, Optional
-import chardet
+import os
 
-# Import required functions from the utility module
-from utils import (
-    setup_logging,
-    extract_date_from_filename,
-    load_signals_cortec,
-    create_edf_file,
-    create_ieeg_json_file,
-    create_channels_tsv_file,
-    get_post_op_day,
-    detect_01010101_pattern,
-    create_impedance_tsv,
-)
+# オリジナルモジュールの取得
+from utils import load_signals_cortec, create_edf_file, extract_date_from_filename, create_ieeg_json_file, create_channels_tsv_file
 
-# Mapping from subject name to BIDS ID
-MAP_SUB_NAME_TO_ID = {
+# # ログの設定
+# logging.basicConfig(
+#     level=logging.DEBUG,  # ログレベルを設定（DEBUG, INFO, WARNING, ERROR, CRITICAL）
+#     format='%(asctime)s - %(levelname)s - %(message)s',  # ログフォーマットの設定
+#     filename='process.log',  # ログファイル名の指定
+#     filemode='w'  # 書き込みモード（w: 書き込み/上書き, a: 追記）
+# )
+
+# コンソールにもログを出力するための設定
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.DEBUG)
+console_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+console_handler.setFormatter(console_formatter)
+logging.getLogger().addHandler(console_handler)
+
+#######################################################
+### NEW PART 1: 设置多日志输出(一个正常+一个警告/错误) ###
+#######################################################
+# def setup_logging(info_log='process.log', error_log='error.log'):
+#     logger = logging.getLogger("bids_logger")
+#     logger.setLevel(logging.DEBUG)
+
+#     # 清空已存在的handler，防止重复写入
+#     logger.handlers = []
+
+#     # 格式
+#     formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+
+#     # info级别(含debug,info)输出到 info_log
+#     fh_info = logging.FileHandler(info_log, mode='w', encoding='utf-8')
+#     fh_info.setLevel(logging.INFO)
+#     fh_info.setFormatter(formatter)
+
+#     # warning及以上输出到 error_log
+#     fh_error = logging.FileHandler(error_log, mode='w', encoding='utf-8')
+#     fh_error.setLevel(logging.WARNING)
+#     fh_error.setFormatter(formatter)
+
+#     # 同时在控制台输出
+#     ch = logging.StreamHandler()
+#     ch.setLevel(logging.DEBUG)
+#     ch.setFormatter(formatter)
+
+#     logger.addHandler(fh_info)
+#     logger.addHandler(fh_error)
+#     logger.addHandler(ch)
+
+#     return logger
+
+
+'''
+処理フロー
+    1. ConditionDataディレクトリ内のサルディレクトリ名を取得する（Boss or Carol - subject名）
+    2. サルディレクトリ内の日付フォルダ名を（古い順に）取得する
+    3. ある日付フォルダ内のjsonファイル一覧を（古い順に）取得する
+    4. あるjsonファイル内の Task Type を取得する
+    5. あるjsonファイルのパスとその Task Type から edfファイル名を作成する
+    6. あるedfファイルに該当する binファイル を edfファイル に変換する
+    7. 3.に属するすべてのjsonファイルに対して、4・5・6を繰り返す
+    8. 2.に属するすべての日付フォルダに対して、3・4・5・6・7を繰り返す
+    9. 1.に属するすべてのサルディレクトリに対して、2・3・4・5・6・7を繰り返す
+'''
+
+# サル名とサルIDの対応辞書
+map_sub_name_to_id = {
     "Carol": "monkeyc",
     "Boss": "monkeyb"
 }
-MONKEY_NAMES = ["Boss", "Carol"]
 
-# Task mapping information (only tasks with use_flag=True are processed)
-TASK_MAPPING_INFO = {
+# サル名リスト
+monkey_names = ["Boss", "Carol"]
+
+# 猿の手術日
+surgery_date = {
+    "Boss": "20230711",
+    "Carol": "20221222"
+}
+
+# タスクのマッピングデータ
+# 変換するタスクの指定は、"use_flag" を True に設定することで行う
+task_mapping_info = {
     "association": {
         "use_flag": False,
         "mapped_name": "pressing",
@@ -62,6 +117,11 @@ TASK_MAPPING_INFO = {
         "mapped_name": "reaching",
         "description": "",
     },
+    "reaching0": {
+        "use_flag": True,
+        "mapped_name": "reaching0",
+        "description": "Reaching without Home button",
+    },
     "rest": {
         "use_flag": True,
         "mapped_name": "rest",
@@ -79,226 +139,294 @@ TASK_MAPPING_INFO = {
     }
 }
 
-# Data and output directories
-DATA_DIR_PATH = Path("/work/project/ECoG_Monkey/01_Data")
-BIDS_DATA_DIR_PATH = Path("/work/project/ECoG_Monkey/BIDS_test_v2")
-CONFIG_FILE_PATH = Path("..") / "config.json"
+# 処理する日付の範囲を指定
+# TODO: 日付の範囲はサルごとに決める
+limit_start_date = "20230101"
+limit_end_date = "20250101"
 
+# データディレクトリのパス
+data_dir_path = r"/work/project/ECoG_Monkey/01_Data"
+# debug path
+# data_dir_path = r"C:\Users\ilass\osakauniv_ws\monkey-data-bids-converter\sample_data_for_BIDS\CiNet_NAS\01_Data"
 
-def main():
-    """
-    Main function: Process data for each subject and convert to BIDS format.
-    """
-    # Set up logging for both file and console outputs.
-    logger = setup_logging(info_log="process.log", error_log="error.log")
-    logger.info("Starting BIDS data conversion process.")
+impedance_dir_path = os.path.join(data_dir_path, "Impedance")
 
-    # Load configuration file
-    try:
-        with open(CONFIG_FILE_PATH, "r", encoding="utf-8") as f:
-            config = json.load(f)
-    except Exception as e:
-        logger.error(f"Failed to load configuration file {CONFIG_FILE_PATH}: {e}")
-        return
+# BIDSデータディレクトリのパス
+bids_data_dir_path = r"/work/project/ECoG_Monkey/BIDS"
+# debug path
+# bids_data_dir_path = r"C:\Users\ilass\osakauniv_ws\monkey-data-bids-converter\20241226-BIDS"
 
-    # Process each subject
-    for monkey_name in MONKEY_NAMES:
-        process_subject(monkey_name, config, logger)
+# load config file
+config_file_path = r"/work/project/ECoG_Monkey/01_Data/config.json"
+with open(config_file_path, "r", encoding="utf-8") as f:
+        config = json.load(f)
 
+# BIDS変換の処理をする日付の範囲を指定
+range_start_date = {
+    "Carol": datetime.strptime("20221222", "%Y%m%d"),
+    "Boss": datetime.strptime("20240501", "%Y%m%d")
+}
+range_end_date = {    
+    "Carol": datetime.strptime("20240501", "%Y%m%d"),
+    "Boss": datetime.strptime("20240501", "%Y%m%d")
+}
 
-def process_subject(monkey_name: str, config: dict, logger: logging.Logger) -> None:
-    """
-    Process all data for a single subject.
-    
-    Parameters:
-    - monkey_name: Subject's name (e.g., "Boss" or "Carol")
-    - config: Configuration loaded from the config file
-    - logger: Logger object for logging messages
-    """
-    logger.info(f"Starting processing for subject {monkey_name}")
-    sub_id = MAP_SUB_NAME_TO_ID.get(monkey_name, monkey_name.lower())
-    subject_cfg = config.get("subjects", {}).get(monkey_name, {})
+# BIDSデータ保存用ディレクトリが存在しない場合に作成
+if not os.path.isdir(bids_data_dir_path):
+    os.makedirs(bids_data_dir_path)
 
-    # Retrieve subject-specific configuration: broken channels, progressive channels, and date range.
+for monkey_name in monkey_names:
+    # 初始化日志
+    logger = setup_logging("process.log", "error.log")
+    logging.info(f"Processing monkey: {monkey_name}")
+    sub_id = map_sub_name_to_id[monkey_name]
+    subject_cfg = config["subjects"][monkey_name]
+
+    # チャンネル情報の取得
     broken_ch_list = subject_cfg.get("BrokenChannels", [])
-    progressive_channels = subject_cfg.get("ProgressiveChannels", {})
-    start_date_str = subject_cfg.get("start_date")  # e.g., "20221222"
-    end_date_str   = subject_cfg.get("end_date")    # e.g., "20240501"
-    op_day_str     = subject_cfg.get("OperationDay")  # e.g., "20221222"
+    question_ch_list = subject_cfg.get("QuestionableChannels", [])
+    remap_dict = subject_cfg.get("RemappedChannels", {})
 
+    # 从 config.json 中解析字符串
+    start_date_str = subject_cfg["start_date"]     # e.g. "20221222"
+    end_date_str   = subject_cfg["end_date"]       # e.g. "20240501"
+    op_day_str     = subject_cfg["OperationDay"]   # e.g. "20221222"
+
+    # 转为 datetime
+    start_date = datetime.strptime(start_date_str, "%Y%m%d")
+    end_date   = datetime.strptime(end_date_str,   "%Y%m%d")
+    op_date    = datetime.strptime(op_day_str,     "%Y%m%d")
+
+    # サルフォルダ下のConditionフォルダ内の全ての日付フォルダ名を取得
+    condition_folder_path = os.path.join(data_dir_path, "Condition", monkey_name)
+    dates = [name for name in os.listdir(condition_folder_path) if os.path.isdir(os.path.join(condition_folder_path, name))]
+    logging.debug(f"Dates found: {dates}")
+
+    # 日付フォルダ名を datetime オブジェクトに変換し、日付の古い順にソート
     try:
-        start_date = datetime.strptime(start_date_str, "%Y%m%d")
-        end_date = datetime.strptime(end_date_str, "%Y%m%d")
-        op_date = datetime.strptime(op_day_str, "%Y%m%d")
-    except Exception as e:
-        logger.error(f"Date format error for subject {monkey_name}: {e}")
-        return
-    
-    # Get the subject's condition directory
-    condition_folder_path = DATA_DIR_PATH / "Condition" / monkey_name
-    if not condition_folder_path.is_dir():
-        logger.error(f"Condition folder does not exist: {condition_folder_path}")
-        return
+        dates_sorted = sorted(dates, key=lambda date: datetime.strptime(date, "%Y%m%d"), reverse=False)
+        logging.debug(f"Dates found (sorted): {dates_sorted}")
+    except ValueError as e:
+        logging.error(f"Error parsing date folders: {e}")
+        # 日付フォルダが無い/形式が合わないなどの場合はスキップ
+        continue
 
-    # Get all date folders in the condition directory
-    dates = [d.name for d in condition_folder_path.iterdir() if d.is_dir()]
-    logger.debug(f"Found date folders: {dates}")
+    # 開始日付と終了日付を指定し、その範囲内の日付フォルダのみ処理する
+    dates_sorted = [date for date in dates_sorted if start_date <= datetime.strptime(date, "%Y%m%d") <= end_date]
+    logging.debug(f"Dates sorted found: {dates_sorted}")
 
-    try:
-        dates_sorted = sorted(dates, key=lambda d: datetime.strptime(d, "%Y%m%d"))
-    except Exception as e:
-        logger.error(f"Failed to sort date folders: {e}")
-        return
+    # 日付フォルダごとの処理
+    for index, date in enumerate(dates_sorted, start=1):
+        logging.info(f"Processing date: {date}")
+        # ses_id = "{:02}".format(index)
+        # 计算术后天数
+        post_op_day = (datetime.strptime(date, "%Y%m%d") - op_date).days
+        ses_id = f"day{post_op_day:02d}"
+        # ある日付フォルダ内の全てのjsonファイル名を取得
+        json_folder_path = os.path.join(condition_folder_path, date)
+        json_file_names = [
+            name for name in os.listdir(json_folder_path)
+            if os.path.isfile(os.path.join(json_folder_path, name)) and name.endswith(".json")
+        ]
 
-    # Filter folders within the specified date range
-    dates_filtered = [d for d in dates_sorted if start_date <= datetime.strptime(d, "%Y%m%d") <= end_date]
-    logger.debug(f"Date folders within specified range: {dates_filtered}")
+        # 「Task Type」ごとにファイルを分類
+        task_type_infos = {}
+        # scans.tsv に書き込むためのリストを初期化
+        scans_info = []
 
-    # Process each date folder
-    for date_str in dates_filtered:
-        process_date(monkey_name, sub_id, date_str, op_day_str, broken_ch_list, progressive_channels, logger)
+        for json_file_name in json_file_names:
+            logging.info(f"Processing JSON file: {json_file_name}")
+            json_file_path = os.path.join(json_folder_path, json_file_name)
+            # JSONファイルのエンコーディングを自動検出して読み込む
+            with open(json_file_path, 'rb') as f:
+                raw_data = f.read()
+                encoding = chardet.detect(raw_data)['encoding']
 
+            with open(json_file_path, 'r', encoding=encoding) as f:
+                try:
+                    condition_data = json.load(f)
+                except json.decoder.JSONDecodeError as e:
+                    logging.error(f"JSON decode error: {e}")
+                    continue
 
-def process_date(monkey_name: str, sub_id: str, date_str: str, op_day_str: str,
-                 broken_ch_list: list, progressive_channels: dict, logger: logging.Logger) -> None:
-    """
-    Process all JSON files in a single date folder and generate corresponding BIDS files.
-    
-    Parameters:
-    - monkey_name: Subject name
-    - sub_id: BIDS subject ID
-    - date_str: Date folder name in "YYYYMMDD" format
-    - op_day_str: Operation day as a string (e.g., "20221222")
-    - broken_ch_list: List of broken channels
-    - progressive_channels: Progressive channel information
-    - logger: Logger object for logging messages
-    """
-    logger.info(f"Processing date folder {date_str}")
-    current_date = datetime.strptime(date_str, "%Y%m%d")
-    post_op_day = get_post_op_day(date_str, op_day_str)
-    ses_id = f"day{post_op_day:02d}"
+            # jsonファイルから「Task Type」を取得
+            task_type = condition_data.get('Task Type')
+            # task_mapping_info で use_flag が True のもののみ処理する
+            if task_type in task_mapping_info and task_mapping_info[task_type]["use_flag"]:
+                task_type_infos.setdefault(task_type, [])
+                # 拡張子を除いたファイル名
+                task_type_infos[task_type].append(os.path.splitext(json_file_name)[0])
 
-    json_folder_path = DATA_DIR_PATH / "Condition" / monkey_name / date_str
-    if not json_folder_path.is_dir():
-        logger.error(f"JSON folder does not exist: {json_folder_path}")
-        return
+        # 「Task Type」ごとにrun番号を割りふる
+        for task_type, file_name_list in task_type_infos.items():
+            # 各「Task Type」ごとに、jsonファイルを日付の古い順に並べ替え
+            file_name_list.sort(key=extract_date_from_filename, reverse=False)
 
-    json_files = [f for f in json_folder_path.iterdir() if f.is_file() and f.suffix == ".json"]
-    task_type_infos = {}
-    scans_info = []  # To store information for scans.tsv
+            run_num = 0
+            mapped_task_name = task_mapping_info[task_type]["mapped_name"]
+            task_description = task_mapping_info[task_type]["description"]
 
-    # Process each JSON file to classify by task type
-    for json_file in json_files:
-        logger.info(f"Processing JSON file: {json_file.name}")
-        try:
-            raw_data = json_file.read_bytes()
-            encoding = chardet.detect(raw_data)["encoding"]
-            with json_file.open("r", encoding=encoding) as f:
-                condition_data = json.load(f)
-        except Exception as e:
-            logger.error(f"Failed to read/parse {json_file}: {e}")
-            continue
+            for file_name in file_name_list:
+                run_num += 1
 
-        task_type = condition_data.get("Task Type")
-        if task_type in TASK_MAPPING_INFO and TASK_MAPPING_INFO[task_type]["use_flag"]:
-            task_type_infos.setdefault(task_type, []).append(json_file.stem)
+                # edfファイル名とパスの設定
+                edf_file_name = (
+                    f"sub-{sub_id}_ses-{post_operative_day}_task-{mapped_task_name}_run-{run_num:02}_ieeg.edf"
+                )
+                edf_file_path = os.path.join(
+                    bids_data_dir_path, f"sub-{sub_id}", f"ses-{post_operative_day}", "ieeg", edf_file_name
+                )
 
-    # Generate BIDS files for each task type
-    for task_type, file_name_list in task_type_infos.items():
-        # # Sort the list of file base names in chronological order based on the extracted datetime.
-        file_name_list.sort(key=extract_date_from_filename)
-        # # Initialize the run counter. This counter will be incremented for each file, 
-        # ensuring that each run (i.e., each separate recording session for the same task on the same date) 
-        # is assigned a unique sequential run number.
-        run_num = 0
-        mapped_task_name = TASK_MAPPING_INFO[task_type]["mapped_name"]
-        task_description = TASK_MAPPING_INFO[task_type]["description"]
-        
-        # Iterate through each base file name in the sorted list.
-        for base_file_name in file_name_list:
-            # Increment the run number for each file processed.
-            run_num += 1
-            edf_file_name = f"sub-{sub_id}_ses-{ses_id}_task-{mapped_task_name}_run-{run_num:02}_ieeg.edf"
-            edf_file_path = BIDS_DATA_DIR_PATH / f"sub-{sub_id}" / f"ses-{ses_id}" / "ieeg" / edf_file_name
+                # 元となるbinファイルパスの生成
+                bin_file_name = file_name + ".bin"
+                bin_file_path = os.path.join(
+                    data_dir_path, "CortecData", monkey_name, date, bin_file_name
+                )
 
-            bin_file_path = DATA_DIR_PATH / "CortecData" / monkey_name / date_str / f"{base_file_name}.bin"
+                # BIDS形式のファイル一式を生成
+                try:
+                    data_st = load_signals_cortec(bin_file_path, interp_method="linear+nearest")
 
-            try:
-                data_st = load_signals_cortec(str(bin_file_path), interp_method="linear+nearest")
-            # Data quality control: Check trigger signal for anomalies in channels TR01 to TR04.
-            # Extract indices of channels whose names are TR01, TR02, TR03, or TR04 from the channel names list.
-                channel_names = data_st["channel_names"]
-                trigger_indices = [i for i, ch in enumerate(channel_names) if ch in ["TR01", "TR02", "TR03", "TR04"]]
-                if trigger_indices:
-                    # Extract trigger data only from TR01 to TR04 channels.
-                    trigger_data = data_st["signals"][:, trigger_indices]
-                    if detect_01010101_pattern(trigger_data, logger):
-                        logger.warning(f"{bin_file_path} trigger signal shows excessive alternating patterns, indicating possible data anomaly.")
-                exp_start_datetime = extract_date_from_filename(base_file_name)
-                create_edf_file(data_st, str(edf_file_path), exp_start_datetime, monkey_name, f"sub-{sub_id}")
-            except Exception as e:
-                logger.error(f"Error processing {bin_file_path}: {e}")
-                continue
+                    # ファイル名から実験開始時刻の取得
+                    exp_start_datetime = extract_date_from_filename(filename=file_name)
 
-            # Copy events file
-            events_file_name = f"{base_file_name}_events.tsv"
-            events_file_path = DATA_DIR_PATH / "Events" / monkey_name / date_str / events_file_name
-            bids_events_file_name = f"sub-{sub_id}_ses-{ses_id}_task-{mapped_task_name}_run-{run_num:02}_events.tsv"
-            bids_events_file_path = BIDS_DATA_DIR_PATH / f"sub-{sub_id}" / f"ses-{ses_id}" / "ieeg" / bids_events_file_name
-            try:
-                shutil.copy(str(events_file_path), str(bids_events_file_path))
-            except Exception as e:
-                logger.error(f"Failed to copy events file {events_file_path}: {e}")
+                    # edfファイルの生成と保存
+                    # --------------------------------------------------------------------------------------
+                    create_edf_file(
+                        data_st, edf_file_path, exp_start_datetime, monkey_name, "sub-" + str(sub_id)
+                    )
+                    # --------------------------------------------------------------------------------------
 
-            # Generate channels.tsv file using unified channel configuration
-            bids_channels_file_name = f"sub-{sub_id}_ses-{ses_id}_task-{mapped_task_name}_run-{run_num:02}_channels.tsv"
-            bids_channels_file_path = BIDS_DATA_DIR_PATH / f"sub-{sub_id}" / f"ses-{ses_id}" / "ieeg" / bids_channels_file_name
-            try:
-                create_channels_tsv_file(str(bids_channels_file_path), data_st,
-                                           measurement_date=current_date,
-                                           broken_channels=broken_ch_list,
-                                           progressive_channels=progressive_channels)
-            except Exception as e:
-                logger.error(f"Failed to generate channels.tsv: {e}")
+                    # eventsファイルのコピー
+                    # --------------------------------------------------------------------------------------
+                    events_file_name = file_name + "_events.tsv"
+                    events_file_path = os.path.join(
+                        data_dir_path, "Events", monkey_name, date, events_file_name
+                    )
+                    bids_events_file_name = (
+                        f"sub-{sub_id}_ses-day{post_operative_day}_task-{mapped_task_name}"
+                        f"_run-{run_num:02}_events.tsv"
+                    )
+                    bids_events_file_path = os.path.join(
+                        bids_data_dir_path, f"sub-{sub_id}", f"ses-{post_operative_day}", "ieeg", bids_events_file_name
+                    )
+                    shutil.copy(events_file_path, bids_events_file_path)
+                    # --------------------------------------------------------------------------------------
 
-            # Generate iEEG JSON file
-            bids_json_file_name = f"sub-{sub_id}_ses-{ses_id}_task-{mapped_task_name}_run-{run_num:02}_ieeg.json"
-            bids_json_file_path = BIDS_DATA_DIR_PATH / f"sub-{sub_id}" / f"ses-{ses_id}" / "ieeg" / bids_json_file_name
-            try:
-                create_ieeg_json_file(data_st, str(bids_json_file_path),
-                                      task_name=mapped_task_name,
-                                      task_description=task_description)
-            except Exception as e:
-                logger.error(f"Failed to generate iEEG JSON file: {e}")
+                    # channels ファイルの生成
+                    # --------------------------------------------------------------------------------------
+                    updates = {}
+                    bids_channels_file_name = (
+                        f"sub-{sub_id}_ses-{post_operative_day}_task-{mapped_task_name}"
+                        f"_run-{run_num:02}_channels.tsv"
+                    )
+                    bids_channels_file_path = os.path.join(
+                        bids_data_dir_path, f"sub-{sub_id}", f"ses-{post_operative_day}", "ieeg", bids_channels_file_name
+                    )
 
-            # Record scan information for scans.tsv
-            relative_edf_path = str(Path("ieeg") / edf_file_name).replace("\\", "/")
-            acquisition_time_str = exp_start_datetime.isoformat()
-            scans_info.append([relative_edf_path, acquisition_time_str])
+                    # 标记坏通道
+                    for ch in broken_ch_list:
+                        updates[ch] = {
+                            "status": "bad",
+                            "status_description": "hardware permanently defective from day 0"
+                        }
+                        
+                    create_channels_tsv_file(
+                        out_tsv_path=bids_channels_file_path,
+                        updated_channels=updates
+                    )
+                    # --------------------------------------------------------------------------------------
 
-            # Generate impedance TSV file if impedance data exists
-            create_impedance_tsv(sub_id, post_op_day, date_str,
-                                 str(DATA_DIR_PATH / "Impedance" / monkey_name),
-                                 str(BIDS_DATA_DIR_PATH), logger)
+                    # jsonファイルの生成
+                    # --------------------------------------------------------------------------------------
+                    bids_json_file_name = (
+                        f"sub-{sub_id}_ses-{post_operative_day}_task-{mapped_task_name}"
+                        f"_run-{run_num:02}_ieeg.json"
+                    )
+                    bids_json_file_path = os.path.join(
+                        bids_data_dir_path, f"sub-{sub_id}", f"ses-{post_operative_day}", "ieeg", bids_json_file_name
+                    )
 
-    # Generate scans.tsv file for the session if scans_info is not empty
-    if scans_info:
-        ses_dir_path = BIDS_DATA_DIR_PATH / f"sub-{sub_id}" / f"ses-{ses_id}"
-        if not ses_dir_path.exists():
-            ses_dir_path.mkdir(parents=True, exist_ok=True)
-        scans_tsv_name = f"sub-{sub_id}_ses-{ses_id}_scans.tsv"
-        scans_tsv_path = ses_dir_path / scans_tsv_name
+                    # 若有插值mask, misc_count = 1, 否则 misc_count = 0
+                    misc_count = 0
+                    has_interp = "interp_mask" in data_st
+                    if has_interp:
+                        misc_count = 1
+                    create_ieeg_json_file(
+                        bin_file_path=bin_file_path,
+                        out_json_path=bids_json_file_path,
+                        task_name=mapped_task_name,
+                        task_description=task_description,
+                        instructions="n/a",
+                        sampling_frequency=int(data_st["sampling_rate"]),
+                        power_line_frequency=60,
+                        hardware_filters="High pass filter cut-off: ~2 Hz, Low pass filter cut-off: 325 Hz",
+                        software_filters="n/a",
+                        manufacturer="CorTec GmbH, Freiburg, Germany",
+                        manufacturers_model_name="Brain Interchange ONE",
+                        institution_name="Osaka University Graduate School of Medicine",
+                        institution_address="2-2 Yamadaoka, Suita-shi, Osaka 565-0871",
+                        ecog_channel_count=data_st["channel_num_signal"],
+                        seeg_channel_count=0,
+                        eeg_channel_count=0,
+                        eog_channel_count=0,
+                        ecg_channel_count=0,
+                        emg_channel_count=0,
+                        misc_channel_count=misc_count,
+                        trigger_channel_count=data_st["channel_num_trigger"],
+                        recording_type="continuous",
+                        software_versions="n/a",
+                        ieeg_placement_scheme=(
+                            "The electrode arrays were positioned into subdural space over the "
+                            "sensorimotor cortex on both hemispheres. Each of these arrays had 15 "
+                            "measurement electrodes, along with a single reference electrode oriented "
+                            "towards the dura mater"
+                        ),
+                        # .hdrファイルを参照し、gndがFalseの場合は""、Trueの場合は"the upper back (interscapular region)"を設定
+                        ieeg_reference="As explained in ieeg placement scheme",
+                        electrode_manufacturer="CorTec GmbH, Freiburg, Germany",
+                        electrode_manufacturers_model_name="Brain Interchange ONE",
+                        # .hdrファイルを参照し、gndがFalseの場合は""、Trueの場合は"the upper back (interscapular region)"を設定
+                        ieeg_ground="the upper back (interscapular region)",
+                        electrical_stimulation=False,
+                        electrical_stimulation_parameters="n/a"
+                    )
+                    # --------------------------------------------------------------------------------------
 
-        try:
-            with scans_tsv_path.open("w", encoding="utf-8", newline="") as f:
+                    # ---- ここで scans.tsv 用情報をリストに追加する ----------------------------------
+                    # BIDS仕様上、filename はサブフォルダを含む相対パス、post_operative_day は 手術日からの経過日数を記載
+                    relative_edf_path = os.path.join(
+                        "ieeg", edf_file_name
+                    ).replace("\\", "/")  # Windows環境対策
+                    # 日付フォルダから年月日を除いた時分秒を取得
+                    acquisition_time_str = exp_start_datetime.strftime("%H:%M:%S")
+                    scans_info.append([relative_edf_path, acquisition_time_str])
+                    # ---------------------------------------------------------------------------
+
+                except Exception as e:
+                    logging.error(f"Error processing {bin_file_path}: {e}")
+                    continue
+
+        # セッションごとの処理が終わったら scans.tsv を生成
+        if scans_info:
+            # ディレクトリが存在しない場合は作成
+            ses_dir_path = os.path.join(bids_data_dir_path, f"sub-{sub_id}", f"ses-{post_operative_day}")
+            if not os.path.isdir(ses_dir_path):
+                os.makedirs(ses_dir_path)
+
+            scans_tsv_name = f"sub-{sub_id}_ses-{post_operative_day}_scans.tsv"
+            scans_tsv_path = os.path.join(ses_dir_path, scans_tsv_name)
+
+            # タブ区切りで書き出し
+            with open(scans_tsv_path, "w", encoding="utf-8", newline="") as f:
                 writer = csv.writer(f, delimiter="\t")
-                writer.writerow(["filename", "acq_time"])
+                # ヘッダ行
+                writer.writerow(["filename", "time"])
+                # データ行
                 for row in scans_info:
                     writer.writerow(row)
-            logger.info(f"Scans TSV file generated successfully: {scans_tsv_path}")
-        except Exception as e:
-            logger.error(f"Failed to generate scans.tsv: {e}")
 
+            logging.info(f"Generated scans.tsv: {scans_tsv_path}")
+        # 日付フォルダ(=セッション)のループここまで
 
-if __name__ == "__main__":
-    main()
+    # サルディレクトリのループここまで
