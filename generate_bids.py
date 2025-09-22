@@ -28,6 +28,8 @@ from utils_test_v1 import (
     get_post_op_day,
     detect_01010101_pattern,
     create_impedance_tsv,
+    generate_events_json, # <--- 新增
+    load_samples, # <--- 新增
     create_electrodes_tsv,      # <--- 新增
     create_coordsystem_json_fallback      # <--- 新增
 )
@@ -88,149 +90,6 @@ DATA_DIR_PATH = Path("/work/project/ECoG_Monkey/01_Data")
 BIDS_DATA_DIR_PATH = Path("/work/project/ECoG_Monkey/BIDS_test_clean")
 CONFIG_FILE_PATH = Path("..") / "config.json"
 SAMPLES_FILE_DEFAULT = Path("samples.yaml")
-
-def load_samples(samples_path: Path) -> Dict:
-    """
-    读取 samples.yaml，返回结构：
-    {
-      "Boss": {149: {"tasks": ["rest"]}, 337: {"tasks": ["reaching"]}},
-      "Carol": {...}
-    }
-    若文件不存在或为空，返回 {}。
-    """
-    if not samples_path.exists():
-        return {}
-    with samples_path.open("r", encoding="utf-8") as f:
-        data = yaml.safe_load(f) or {}
-    out = {}
-    for subj, items in (data.get("subjects") or {}).items():
-        out[subj] = {}
-        for it in items or []:
-            pod = it.get("post_op_day")
-            if pod is None:
-                continue
-            tasks = it.get("tasks")  # 允许 None 或 []
-            out[subj][int(pod)] = {"tasks": tasks}
-    return out
-
-def generate_events_json(tsv_path: Path, mapped_task_name: str, logger) -> None:
-    """
-    若同名 events.json 不存在，则基于任务类型的模板 + tsv 表头生成最小说明。
-    不校正、不修改 tsv；仅描述已有列。templates 以“映射后的任务名”为 key：
-      rest, sep, listening(=piano), pressing, reaching, word(若启用)
-    """
-    if not tsv_path.exists():
-        logger.warning(f"[events.json] TSV not found, skip: {tsv_path}")
-        return
-
-    json_path = tsv_path.with_name(tsv_path.name.replace("_events.tsv", "_events.json"))
-    if json_path.exists():
-        logger.info(f"[events.json] already exists, skip: {json_path}")
-        return
-
-    # 读取 TSV 表头
-    try:
-        with tsv_path.open("r", encoding="utf-8") as f:
-            reader = csv.reader(f, delimiter="\t")
-            header = next(reader, [])
-    except Exception as e:
-        logger.error(f"[events.json] failed reading header from {tsv_path}: {e}")
-        return
-    if not header:
-        logger.warning(f"[events.json] empty header in {tsv_path}, skip.")
-        return
-
-    # 任务模板（按你提供的语义；只会选择 header 中实际存在的列）
-    templates = {
-        "rest": {
-            "onset":        {"Description": "Event onset time relative to run start", "Units": "s"},
-            "duration":     {"Description": "Event duration", "Units": "s"},
-            "trial_type":   {"Description": "Type of event",
-                             "Levels": {"rest_start": "Beginning of eyes-open resting state block (single row event)"}},
-            "stim_file":    {"Description": "Associated stimulus file name if any, else 'n/a'"},
-            "response_type":{"Description": "Response effector or button label if any, else 'n/a'"},
-            "response_time":{"Description": "Latency between stimulus and response when applicable", "Units": "s"},
-        },
-        "sep": {
-            "onset":      {"Description": "Pulse onset", "Units": "s"},
-            "duration":   {"Description": "Pulse duration", "Units": "s"},
-            "trial_type": {"Description": "Type of event",
-                           "Levels": {"ssep_stim": "Somatosensory electrical pulse on"}},
-            "stim_side":  {"Description": "Side of stimulation",
-                           "Levels": {"Left": "Left wrist stimulation", "Right": "Right wrist stimulation"}},
-            "amplitude_mA": {"Description": "Stimulation current amplitude", "Units": "mA"},
-            "response_type":{"Description": "Response effector/button if present, else 'n/a'"},
-            "response_time":{"Description": "Response latency if present", "Units": "s"},
-        },
-        # piano 在脚本中映射为 listening
-        "listening": {
-            "onset":      {"Description": "Stimulus onset", "Units": "s"},
-            "duration":   {"Description": "Stimulus duration", "Units": "s"},
-            "trial_type": {"Description": "Type of event",
-                           "Levels": {"stimulus_on": "Auditory stimulus onset"}},
-            "stim_file":  {"Description": "Presented audio file name (e.g., 'DoMi.wav')"},
-            "response_type":{"Description": "Participant response effector if any, else 'n/a'"},
-            "response_time":{"Description": "Response latency if present", "Units": "s"},
-        },
-        "word": {
-            "onset":      {"Description": "Stimulus onset", "Units": "s"},
-            "duration":   {"Description": "Stimulus duration", "Units": "s"},
-            "trial_type": {"Description": "Type of event",
-                           "Levels": {"stimulus_on": "Auditory stimulus onset"}},
-            "stim_file":  {"Description": "Presented audio file name"},
-            "response_type":{"Description": "Participant response effector if any, else 'n/a'"},
-            "response_time":{"Description": "Response latency if present", "Units": "s"},
-        },
-        "pressing": {
-            "onset":      {"Description": "Detected movement/press onset", "Units": "s"},
-            "duration":   {"Description": "Not applicable for discrete keypress events", "Units": "s"},
-            "trial_type": {"Description": "Type of event",
-                           "Levels": {"movement_start": "Onset of button press from start-button-referenced parsing",
-                                      "movement_done":  "Response button press when there is no start-button reference"}},
-            "stim_file":  {"Description": "Task has no external stimulus; set to 'n/a'"},
-            "response_type":{"Description": "Which button was pressed",
-                             "Levels": {"left_button": "Left-hand (or left-side) button",
-                                        "right_button":"Right-hand (or right-side) button"}},
-            "response_time":{"Description": "Latency if defined by paradigm; 'n/a' in current script", "Units": "s"},
-        },
-        "reaching": {
-            "onset":      {"Description": "Detected reach movement onset", "Units": "s"},
-            "duration":   {"Description": "Not applicable for discrete movement onset events", "Units": "s"},
-            "trial_type": {"Description": "Type of event",
-                           "Levels": {"movement_start": "Reach movement onset",
-                                      "movement_done":  "Reach movement done (= response button) when no start-button"}},
-            "stim_file":  {"Description": "No external stimulus; 'n/a'"},
-            "response_type":{"Description": "Effector used for the reach",
-                             "Levels": {"left_hand": "Left hand reach",
-                                        "right_hand":"Right hand reach"}},
-            "response_time":{"Description": "Latency if defined by paradigm; 'n/a' in current script", "Units": "s"},
-        },
-    }
-
-    # 归一化任务名（确保使用映射后的名）
-    key = (mapped_task_name or "").lower()
-    tmpl = templates.get(key, None)
-
-    # 根据 header 生成 JSON：优先模板里对应列；其余列给通用描述
-    out = {}
-    if tmpl:
-        for col, meta in tmpl.items():
-            if col in header:
-                out[col] = meta
-    # 对 header 中模板未覆盖的列，补通用描述
-    for col in header:
-        if col not in out:
-            out[col] = {"Description": f"Column '{col}' from events.tsv."}
-
-    # 可选的推荐键
-    out["StimulusPresentation"] = {"OperatingSystem": "n/a", "SoftwareName": "n/a"}
-
-    try:
-        with json_path.open("w", encoding="utf-8") as jf:
-            json.dump(out, jf, indent=4, ensure_ascii=False)
-        logger.info(f"[events.json] generated: {json_path}")
-    except Exception as e:
-        logger.error(f"[events.json] write failed: {e}")
 
 def main():
     """
