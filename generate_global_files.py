@@ -5,6 +5,80 @@ import csv
 import json
 import os
 
+from datetime import datetime
+from pathlib import Path
+
+def generate_readme(bids_root: str):
+    """
+    生成顶层 README（最小版）。
+    """
+    text = [
+        "# Monkey ECoG Dataset",
+        "",
+        "This dataset follows the BIDS specification (iEEG-BIDS).",
+        "",
+        "## Contents",
+        "- Raw iEEG recordings in sub-*/ses-*/ieeg/",
+        "- Per-run events.tsv (+ events.json when available)",
+        "- Global files: dataset_description.json, participants.tsv/json, CHANGES, README",
+        "",
+        "## Notes",
+        "- Times in events.tsv are in seconds relative to run start.",
+        "- Stimuli (if any) should live under /stimuli and be referenced via the `stim_file` column.",
+        "",
+        "## Contacts",
+        "- Maintainer: <your name / email>",
+        ""
+    ]
+    out = os.path.join(bids_root, "README")
+    with open(out, "w", encoding="utf-8") as f:
+        f.write("\n".join(text))
+    print(f"[INFO] Generated: {out}")
+
+def generate_changes(bids_root: str):
+    """
+    生成顶层 CHANGES（初始化一条记录）。
+    """
+    today = datetime.today().strftime("%Y-%m-%d")
+    text = [
+        "Monkey ECoG Dataset — CHANGES",
+        "",
+        f"{today}: Initial export of raw iEEG dataset in BIDS structure.",
+        "- Added dataset_description.json, participants.tsv/json, README.",
+        "- Created /stimuli/ directory (placeholder).",
+    ]
+    out = os.path.join(bids_root, "CHANGES")
+    with open(out, "w", encoding="utf-8") as f:
+        f.write("\n".join(text))
+    print(f"[INFO] Generated: {out}")
+
+def ensure_stimuli_dir(bids_root: str):
+    """
+    创建 /stimuli 目录与占位说明（不会影响验证）。
+    """
+    stim_dir = os.path.join(bids_root, "stimuli")
+    os.makedirs(stim_dir, exist_ok=True)
+    readme_path = os.path.join(stim_dir, "README.txt")
+    if not os.path.exists(readme_path):
+        with open(readme_path, "w", encoding="utf-8") as f:
+            f.write("Place stimulus files here. Reference via events.tsv 'stim_file' column, paths relative to /stimuli.\n")
+    print(f"[INFO] Ensured: {stim_dir}")
+
+def generate_bidsignore(bids_root: str):
+    """
+    生成 .bidsignore（忽略与规范无关的辅助目录/文件）。
+    可按需追加 doc/ 或临时输出目录等。
+    """
+    lines = [
+        "doc/",
+        "*.log",
+        "*.tmp",
+        "*.DS_Store",
+    ]
+    out = os.path.join(bids_root, ".bidsignore")
+    with open(out, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
+    print(f"[INFO] Generated: {out}")
 
 def generate_dataset_description(bids_root):
     """
@@ -85,7 +159,7 @@ def main():
 
     # 然后假设我们想要在 "bids_data" 这个子文件夹下生成BIDS根目录
     # bids_root = /.../two_levels_up_dir/bids_data
-    bids_root = os.path.join(two_levels_up_dir, "bids_data")
+    bids_root = os.path.join(two_levels_up_dir, "BIDS_test_v4")
 
     # 如果目录不存在就创建
     os.makedirs(bids_root, exist_ok=True)
@@ -94,6 +168,11 @@ def main():
     generate_participants_tsv(bids_root)
     generate_participants_json(bids_root)
 
+    # 新增的全局文件/目录
+    generate_readme(bids_root)
+    generate_changes(bids_root)
+    ensure_stimuli_dir(bids_root)
+    generate_bidsignore(bids_root)
     print("[INFO] All files generated successfully.")
 
 
