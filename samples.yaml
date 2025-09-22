@@ -1,0 +1,16 @@
+# samples.yaml
+subjects:
+  Boss:
+    - post_op_day: 149
+      tasks: ["rest"]        # 只导出 day149 的 rest
+    - post_op_day: 337
+      tasks: ["reaching"]    # 只导出 day337 的 reaching
+    - post_op_day: 27
+      tasks: ["listening"]
+    - post_op_day: 275
+      tasks: ["sep"]
+    - post_op_day: 24
+      tasks: ["pressing"]
+  Carol:
+    - post_op_day: 315
+      tasks: ["pressing"]  

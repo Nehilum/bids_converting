@@ -14,6 +14,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, Optional
 import chardet
+import argparse
+import yaml
 
 # Import required functions from the utility module
 from utils_test_v1 import (
@@ -83,7 +85,31 @@ TASK_MAPPING_INFO = {
 DATA_DIR_PATH = Path("/work/project/ECoG_Monkey/01_Data")
 BIDS_DATA_DIR_PATH = Path("/work/project/ECoG_Monkey/BIDS_test_v3")
 CONFIG_FILE_PATH = Path("..") / "config.json"
+SAMPLES_FILE_DEFAULT = Path("samples.yaml")
 
+def load_samples(samples_path: Path) -> Dict:
+    """
+    读取 samples.yaml，返回结构：
+    {
+      "Boss": {149: {"tasks": ["rest"]}, 337: {"tasks": ["reaching"]}},
+      "Carol": {...}
+    }
+    若文件不存在或为空，返回 {}。
+    """
+    if not samples_path.exists():
+        return {}
+    with samples_path.open("r", encoding="utf-8") as f:
+        data = yaml.safe_load(f) or {}
+    out = {}
+    for subj, items in (data.get("subjects") or {}).items():
+        out[subj] = {}
+        for it in items or []:
+            pod = it.get("post_op_day")
+            if pod is None:
+                continue
+            tasks = it.get("tasks")  # 允许 None 或 []
+            out[subj][int(pod)] = {"tasks": tasks}
+    return out
 
 def main():
     """
@@ -93,6 +119,13 @@ def main():
     logger = setup_logging(info_log="process.log", error_log="error.log")
     logger.info("Starting BIDS data conversion process.")
 
+    # CLI 参数：支持 --samples
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--samples", type=str, default=None,
+                    help="Path to samples.yaml. If set, export only listed subject/post_op_day/tasks.")
+    args = ap.parse_args()
+
+
     # Load configuration file
     try:
         with open(CONFIG_FILE_PATH, "r", encoding="utf-8") as f:
@@ -101,12 +134,25 @@ def main():
         logger.error(f"Failed to load configuration file {CONFIG_FILE_PATH}: {e}")
         return
 
+    # 读取样例过滤
+    samples_filter = {}
+    if args.samples:
+        samples_filter = load_samples(Path(args.samples))
+    else:
+        # 也支持“默认路径存在就启用”的懒加载
+        if SAMPLES_FILE_DEFAULT.exists():
+            samples_filter = load_samples(SAMPLES_FILE_DEFAULT)
+    if samples_filter:
+        logger.info(f"Samples filtering enabled: {samples_filter}")
+    else:
+        logger.info("Samples filtering not enabled (full export).")
+
     # Process each subject
     for monkey_name in MONKEY_NAMES:
-        process_subject(monkey_name, config, logger)
+        process_subject(monkey_name, config, logger, samples_filter)
 
-
-def process_subject(monkey_name: str, config: dict, logger: logging.Logger) -> None:
+def process_subject(monkey_name: str, config: dict, logger: logging.Logger,
+                    samples_filter: Dict) -> None:
     """
     Process all data for a single subject.
     
@@ -156,11 +202,13 @@ def process_subject(monkey_name: str, config: dict, logger: logging.Logger) -> N
 
     # Process each date folder
     for date_str in dates_filtered:
-        process_date(monkey_name, sub_id, date_str, op_day_str, broken_ch_list, progressive_channels, logger)
-
+        process_date(monkey_name, sub_id, date_str, op_day_str,
+             broken_ch_list, progressive_channels, logger,
+             samples_filter.get(monkey_name, {}))
 
 def process_date(monkey_name: str, sub_id: str, date_str: str, op_day_str: str,
-                 broken_ch_list: list, progressive_channels: dict, logger: logging.Logger) -> None:
+                 broken_ch_list: list, progressive_channels: dict, logger: logging.Logger,
+                 subj_samples: Dict[int, Dict]) -> None:
     """
     Process all JSON files in a single date folder and generate corresponding BIDS files.
     
@@ -177,6 +225,14 @@ def process_date(monkey_name: str, sub_id: str, date_str: str, op_day_str: str,
     current_date = datetime.strptime(date_str, "%Y%m%d")
     post_op_day = get_post_op_day(date_str, op_day_str)
     ses_id = f"day{post_op_day:02d}"
+    # 若启用样例过滤：只保留当前 subject 下指定的 post_op_day
+    # subj_samples 形如 {149: {"tasks": ["rest"]}, 337: {"tasks": ["reaching"]}}
+    allowed_tasks_for_day = None
+    if subj_samples:
+        if post_op_day not in subj_samples:
+            logger.info(f"[samples] skip {monkey_name} {date_str} (post_op_day={post_op_day})")
+            return
+        allowed_tasks_for_day = subj_samples[post_op_day].get("tasks")  # 可能是 None
 
     json_folder_path = DATA_DIR_PATH / "Condition" / monkey_name / date_str
     if not json_folder_path.is_dir():
@@ -213,7 +269,12 @@ def process_date(monkey_name: str, sub_id: str, date_str: str, op_day_str: str,
         run_num = 0
         mapped_task_name = TASK_MAPPING_INFO[task_type]["mapped_name"]
         task_description = TASK_MAPPING_INFO[task_type]["description"]
-        
+        # 若启用样例过滤，且为本 day 指定了 tasks，则仅保留这些任务（按映射后的名字匹配）
+        if allowed_tasks_for_day is not None:
+            if allowed_tasks_for_day and (mapped_task_name not in set(allowed_tasks_for_day)):
+                logger.info(f"[samples] skip task {mapped_task_name} on post_op_day={post_op_day}")
+                continue
+            
         # Iterate through each base file name in the sorted list.
         for base_file_name in file_name_list:
             # Increment the run number for each file processed.
