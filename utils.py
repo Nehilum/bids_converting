@@ -336,90 +336,121 @@ def create_edf_file(data_st: Dict[str, Any], edf_file_path: str, start_datetime:
     
     logging.info(f"EDF file generated successfully: {edf_file_path}")
 
-def create_ieeg_json_file(data_meta: dict, out_json_path: str,
-                          task_name: str = "",
-                          task_description: str = "",
-                          instructions: str = "n/a",
-                          power_line_frequency: int = 60,
-                          software_filters: str = "n/a",
-                          manufacturer: str = "CorTec GmbH",
-                          manufacturers_model_name: str = "Brain Interchange ONE",
-                          institution_name: str = "Osaka University Graduate School of Medicine",
-                          institution_address: str = "n/a",
-                          ecog_channel_count: int = 32,
-                          seeg_channel_count: int = 0,
-                          eeg_channel_count: int = 0,
-                          eog_channel_count: int = 0,
-                          ecg_channel_count: int = 0,
-                          emg_channel_count: int = 0,
-                          misc_channel_count: int = 1,
-                          trigger_channel_count: int = 17,
-                          recording_type: str = "continuous",
-                          software_versions: str = "Unknown",
-                          ieeg_placement_scheme: str = "",
-                          ieeg_reference: str = "The electrode arrays [CH11, CH27] were positioned into subdural space over the sensorimotor cortex on both hemispheres.",
-                          electrode_manufacturer: str = "CorTec GmbH",
-                          electrode_manufacturers_model_name: str = "Brain Interchange ONE",
-                          ieeg_ground: str = "Upper back",
-                          electrical_stimulation: bool = False,
-                          electrical_stimulation_parameters: str = "n/a") -> None:
-    """
-    Generate a BIDS-compliant iEEG JSON file from provided metadata.
-    
-    Parameters:
-    - data_meta: Dictionary containing metadata from signal loading, e.g.,
-                 { "sampling_rate": ..., "reference_channel": ..., "ground": ..., "amplification": ..., "signals": ... }
-    - out_json_path: Output path for the JSON file.
-    - Other parameters: Additional metadata fields to include in the JSON.
-    
-    Note:
-    - This function assumes that data_meta is already loaded (e.g., via load_signals_cortec)
-      and contains the necessary information.
-    """
-    # Use sampling_rate from data_meta if available, otherwise default.
+def create_ieeg_json_file(
+    data_meta: dict,
+    out_json_path: str,
+    *,
+    # —— 任务/环境（与你现有保持一致的默认）——
+    task_name: str = "",
+    task_description: str = "",
+    instructions: str = "n/a",
+    power_line_frequency: int = 60,
+    software_filters: str = "n/a",
+    manufacturer: str = "CorTec GmbH",
+    manufacturers_model_name: str = "Brain Interchange ONE",
+    institution_name: str = "Osaka University Graduate School of Medicine",
+    institutional_department_name: str = "n/a",
+    institution_address: str = "n/a",
+    # —— 仅 ECoG 有效；其它固定 0 —— 
+    misc_channel_count_default: int = 0,  # 仅在无法从 channel_names 判断 TR 时作为兜底
+    # —— 记录与硬件 —— 
+    recording_type: str = "continuous",
+    software_versions: str = "Unknown",
+    ieeg_placement_scheme: str = "",
+    ieeg_reference: str = (
+        "The electrode arrays [CH11, CH27] were positioned into subdural space over the "
+        "sensorimotor cortex on both hemispheres."
+    ),
+    electrode_manufacturer: str = "CorTec GmbH",
+    electrode_manufacturers_model_name: str = "Brain Interchange ONE",
+    ieeg_ground: str = "Upper back",
+    electrical_stimulation: bool = False,
+    electrical_stimulation_parameters: str = "n/a",
+    # —— 推荐键最小补全清单 —— 
+    device_serial_number: str = "n/a",
+    epoch_length: str = "n/a",
+    ieeg_electrode_groups: str = "n/a",
+    subject_artefact_description: str = "n/a",
+    cog_atlas_id: str = "n/a",
+    cogpo_id: str = "n/a",
+) -> None:
+    # 采样率与时长
     sfreq = data_meta.get("sampling_rate", DEFAULT_SAMPLING_FREQUENCY)
-    # Calculate recording duration if signals are provided.
     signals = data_meta.get("signals")
-    if signals is not None:
-        n_samples = signals.shape[0]
-        recording_duration_sec = n_samples / float(sfreq)
+    if signals is not None and hasattr(signals, "shape") and signals.shape:
+        try:
+            n_samples = int(signals.shape[0])
+            recording_duration_sec = float(n_samples) / float(sfreq) if sfreq else 0.0
+        except Exception:
+            recording_duration_sec = 0.0
     else:
-        recording_duration_sec = 0
+        recording_duration_sec = 0.0
 
-    # Build the iEEG JSON dictionary using both data_meta and the provided parameters.
+    # —— 通道计数（只依赖你确有的两项 + 名称列表判定 TR）——
+    ecog_count = int(data_meta.get("channel_num_signal", 0) or 0)
+    logic_total = int(data_meta.get("channel_num_trigger", 0) or 0)  # 历史命名：这里其实是 “logic 总数”
+    names = data_meta.get("channel_names") or []
+
+    # 统计 TR 通道
+    try:
+        trigger_count = sum(1 for n in names if isinstance(n, str) and n.upper().startswith("TR") and n[2:].isdigit())
+    except Exception:
+        trigger_count = 0
+
+    # 若没有名称可判定，则退化为 0，并把 logic_total 视作 misc
+    if trigger_count == 0 and not any((isinstance(n, str) and n.upper().startswith("TR")) for n in names):
+        # 没有可识别的 TR 名称
+        misc_count = max(logic_total - trigger_count, 0) if logic_total else int(misc_channel_count_default or 0)
+    else:
+        misc_count = max(logic_total - trigger_count, 0)
+
     ieeg_json_dict = {
+        # 核心任务元数据
         "TaskName": task_name,
         "TaskDescription": task_description,
         "Instructions": instructions,
         "SamplingFrequency": sfreq,
         "PowerLineFrequency": power_line_frequency,
-        "HardwareFilters": {"HighpassFilter": {"CutoffFrequency": 2.0}, "LowpassFilter": {"CutoffFrequency": 325.0}},
+        "HardwareFilters": {
+            "HighpassFilter": {"CutoffFrequency": 2.0},
+            "LowpassFilter": {"CutoffFrequency": 325.0},
+        },
         "SoftwareFilters": software_filters,
         "Manufacturer": manufacturer,
         "ManufacturersModelName": manufacturers_model_name,
         "InstitutionName": institution_name,
+        "InstitutionalDepartmentName": institutional_department_name,
         "InstitutionAddress": institution_address,
-        "ECOGChannelCount": data_meta.get("channel_num_signal"),
+
+        # —— 推荐键最小补全 —— 
+        "DeviceSerialNumber": device_serial_number,
+        "EpochLength": epoch_length,
+        "iEEGElectrodeGroups": ieeg_electrode_groups,
+        "SubjectArtefactDescription": subject_artefact_description,
+        "CogAtlasID": cog_atlas_id,
+        "CogPOID": cogpo_id,
+
+        # —— 通道计数 —— 
+        "ECOGChannelCount": ecog_count,
         "SEEGChannelCount": 0,
         "EEGChannelCount": 0,
         "EOGChannelCount": 0,
         "ECGChannelCount": 0,
         "EMGChannelCount": 0,
-        "MiscChannelCount": misc_channel_count + data_meta.get("channel_num_trigger"),
+        "TriggerChannelCount": trigger_count,
+        "MiscChannelCount": misc_count,
+
+        # —— 记录属性与电极信息 —— 
         "RecordingDuration": recording_duration_sec,
         "RecordingType": recording_type,
         "SoftwareVersions": software_versions,
         "iEEGPlacementScheme": ieeg_placement_scheme,
         "iEEGReference": ieeg_reference,
-        # "SoftwareReferenceChannel": data_meta.get("reference_channel") or "Unknown",
         "ElectrodeManufacturer": electrode_manufacturer,
         "ElectrodeManufacturersModelName": electrode_manufacturers_model_name,
         "iEEGGround": ieeg_ground,
-        # "GroundUsed": str(data_meta.get("ground") or "false"),
-        "ElectricalStimulation": electrical_stimulation,
+        "ElectricalStimulation": bool(electrical_stimulation),
         "ElectricalStimulationParameters": electrical_stimulation_parameters,
-        # "SessionLabelDescription": "session labeled by post-operative day",
-        # "Amplification": data_meta.get("amplification") or "Unknown"
     }
     
     out_dir = os.path.dirname(out_json_path)
