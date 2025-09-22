@@ -880,9 +880,10 @@ def create_impedance_tsv(sub_id: str, ses_day: int, date_str: str, impedance_sou
         logger.error(f"Failed to generate impedance TSV file: {e}")
 
 def create_coordsystem_json_fallback(sub_id: str,
-                                     ses_id: str,
-                                     bids_root: str,
-                                     logger: logging.Logger) -> str:
+                                     ses_id: Optional[str] = None,
+                                     bids_root: str = ".",
+                                     logger: logging.Logger = None,
+                                     space: Optional[str] = None) -> str:
     """
     为每个 session 生成 sub-<id>_ses-<id>_coordsystem.json（fallback，无坐标）。
     核心键：
@@ -891,10 +892,18 @@ def create_coordsystem_json_fallback(sub_id: str,
       - iEEGCoordinateUnits: "n/a"
     若文件已存在则不覆盖。
     """
-    ses_dir = os.path.join(bids_root, f"sub-{sub_id}", f"ses-{ses_id}", "ieeg")
-    os.makedirs(ses_dir, exist_ok=True)
+    space_tag = f"_space-{space}" if space else ""
+
+    if ses_id is None:
+        ieeg_dir = os.path.join(bids_root, f"sub-{sub_id}", "ieeg")
+        out_name = f"sub-{sub_id}{space_tag}_coordsystem.json"
+    else:
+        ieeg_dir = os.path.join(bids_root, f"sub-{sub_id}", f"ses-{ses_id}", "ieeg")
+        out_name = f"sub-{sub_id}_ses-{ses_id}{space_tag}_coordsystem.json"
+
+    os.makedirs(ieeg_dir, exist_ok=True)
     out_name = f"sub-{sub_id}_ses-{ses_id}_coordsystem.json"
-    out_path = os.path.join(ses_dir, out_name)
+    out_path = os.path.join(ieeg_dir, out_name)
 
     if os.path.exists(out_path):
         logger.info(f"[coordsystem.json] already exists, skip: {out_path}")
@@ -919,9 +928,9 @@ def create_coordsystem_json_fallback(sub_id: str,
     return out_path
 
 def create_electrodes_tsv(sub_id: str,
-                          ses_id: str,
-                          bids_root: Union[str, Path],
-                          logger,
+                          ses_id: Optional[str] = None,
+                          bids_root: Union[str, Path] = ".",
+                          logger: Optional[logging.Logger] = None,
                           coords: Optional[Union[Sequence[Sequence[float]],
                                                  np.ndarray,
                                                  Dict[str, Tuple[float, float, float]]]] = None,
@@ -931,27 +940,29 @@ def create_electrodes_tsv(sub_id: str,
                           manufacturer: str = "n/a",
                           group: str = "n/a",
                           hemisphere: str = "n/a",
-                          electrode_type: Optional[str] = "ECOG"
+                          electrode_type: Optional[str] = "ECOG",
+                          space: Optional[str] = None
                           ) -> str:
     """
-    生成 sub-<id>_ses-<id>_electrodes.tsv（含 x/y/z）。
-    要与同级 coordsystem.json 配套使用（指定坐标系与单位）。
+    生成 electrodes.tsv（可含 x/y/z）。
 
-    参数
-    ----
-    sub_id, ses_id, bids_root : 组成输出路径  <bids_root>/sub-<sub_id>/ses-<ses_id>/ieeg/
-    coords : 
-        - list/ndarray, 形状 (N, 3)，对应每个电极的 (x,y,z)
-        - dict: { "CH01": (x,y,z), ... }
-        - None: 坐标先写 'n/a'
-    names : list[str]，电极名；未提供则默认 ["CH01"..]（长度取 coords N 或 32）
-    其余参数：写入到非空间属性列（可统一或你按需传入）
-    返回：electrodes.tsv 的绝对路径
-    """
+    - 当 ses_id 为 None：输出到被试层级
+        sub-<id>/ieeg/sub-<id>[_space-<label>]_electrodes.tsv
+    - 当 ses_id 非空：保持原行为（会话层级）
+        sub-<id>/ses-<ses>/ieeg/sub-<id>_ses-<ses>[_space-<label>]_electrodes.tsv
+
+    要与同级 coordsystem.json 配套使用（若提供坐标，应在 coordsystem.json 指定坐标系与单位）。
+    """    
     bids_root = Path(bids_root)
-    ieeg_dir = bids_root / f"sub-{sub_id}" / f"ses-{ses_id}" / "ieeg"
+    space_tag = f"_space-{space}" if space else ""
+    if ses_id is None:
+        ieeg_dir = bids_root / f"sub-{sub_id}" / "ieeg"
+        out_path = ieeg_dir / f"sub-{sub_id}{space_tag}_electrodes.tsv"
+    else:
+        ieeg_dir = bids_root / f"sub-{sub_id}" / f"ses-{ses_id}" / "ieeg"
+        out_path = ieeg_dir / f"sub-{sub_id}_ses-{ses_id}{space_tag}_electrodes.tsv"
+
     ieeg_dir.mkdir(parents=True, exist_ok=True)
-    out_path = ieeg_dir / f"sub-{sub_id}_ses-{ses_id}_electrodes.tsv"
 
     if out_path.exists():
         logger.info(f"[electrodes.tsv] already exists, skip: {out_path}")

@@ -180,6 +180,11 @@ def process_subject(monkey_name: str, config: dict, logger: logging.Logger,
     dates_filtered = [d for d in dates_sorted if start_date <= datetime.strptime(d, "%Y%m%d") <= end_date]
     logger.debug(f"Date folders within specified range: {dates_filtered}")
 
+    # Create electrodes and coordsystem files if they don't exist
+    create_electrodes_tsv(sub_id=sub_id, ses_id=None, bids_root=BIDS_DATA_DIR_PATH, logger=logger,
+                      material="Pt/Ir", manufacturer="CorTec GmbH", group="n/a", hemisphere="n/a")
+    create_coordsystem_json_fallback(sub_id=sub_id, ses_id=None, bids_root=BIDS_DATA_DIR_PATH, logger=logger)
+
     # Process each date folder
     for date_str in dates_filtered:
         process_date(monkey_name, sub_id, date_str, op_day_str,
@@ -345,29 +350,7 @@ def process_date(monkey_name: str, sub_id: str, date_str: str, op_day_str: str,
                     writer.writerow(row)
             logger.info(f"Scans TSV file generated successfully: {scans_tsv_path}")
         except Exception as e:
-            logger.error(f"Failed to generate scans.tsv: {e}")
-        
-         # ===== 新增：每个 session 生成 electrodes.tsv（无坐标）与 coordsystem.json（fallback） =====
-        try:
-            create_electrodes_tsv(
-                sub_id=sub_id,
-                ses_id=ses_id,
-                bids_root=str(BIDS_DATA_DIR_PATH),
-                logger=logger,
-                material="Pt/Ir",        
-                manufacturer="CorTec GmbH",
-                group="n/a",
-                hemisphere="n/a"
-            )
-            create_coordsystem_json_fallback(
-                sub_id=sub_id,
-                ses_id=ses_id,
-                bids_root=str(BIDS_DATA_DIR_PATH),
-                logger=logger
-            )
-        except Exception as e:
-            logger.error(f"Failed to generate electrodes/coordsystem for {sub_id} {ses_id}: {e}")
-
+            logger.error(f"Failed to generate scans.tsv: {e}")    
 
 if __name__ == "__main__":
     main()
