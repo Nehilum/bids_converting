@@ -11,7 +11,7 @@ import csv
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Tuple, Dict, Any, Optional
+from typing import Tuple, Dict, Any, Optional, Sequence, Union
 
 import numpy as np
 from scipy.interpolate import RegularGridInterpolator
@@ -734,6 +734,147 @@ def create_impedance_tsv(sub_id: str, ses_day: int, date_str: str, impedance_sou
         logger.info(f"Impedance TSV file generated successfully: {out_imp_path}")
     except Exception as e:
         logger.error(f"Failed to generate impedance TSV file: {e}")
+
+def create_coordsystem_json_fallback(sub_id: str,
+                                     ses_id: str,
+                                     bids_root: str,
+                                     logger: logging.Logger) -> str:
+    """
+    为每个 session 生成 sub-<id>_ses-<id>_coordsystem.json（fallback，无坐标）。
+    核心键：
+      - iEEGCoordinateSystem: "Other"
+      - iEEGCoordinateSystemDescription: 对“无坐标”的说明
+      - iEEGCoordinateUnits: "n/a"
+    若文件已存在则不覆盖。
+    """
+    ses_dir = os.path.join(bids_root, f"sub-{sub_id}", f"ses-{ses_id}", "ieeg")
+    os.makedirs(ses_dir, exist_ok=True)
+    out_name = f"sub-{sub_id}_ses-{ses_id}_coordsystem.json"
+    out_path = os.path.join(ses_dir, out_name)
+
+    if os.path.exists(out_path):
+        logger.info(f"[coordsystem.json] already exists, skip: {out_path}")
+        return out_path
+
+    payload = {
+        "iEEGCoordinateSystem": "Other",
+        "iEEGCoordinateSystemDescription": (
+            "No spatial electrode coordinates are provided at this stage. "
+            "Electrodes are listed in electrodes.tsv with non-spatial attributes only."
+        ),
+        "iEEGCoordinateUnits": "n/a"
+    }
+
+    try:
+        with open(out_path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=4, ensure_ascii=False)
+        logger.info(f"[coordsystem.json] generated: {out_path}")
+    except Exception as e:
+        logger.error(f"[coordsystem.json] write failed: {e}")
+
+    return out_path
+
+def create_electrodes_tsv(sub_id: str,
+                          ses_id: str,
+                          bids_root: Union[str, Path],
+                          logger,
+                          coords: Optional[Union[Sequence[Sequence[float]],
+                                                 np.ndarray,
+                                                 Dict[str, Tuple[float, float, float]]]] = None,
+                          names: Optional[Sequence[str]] = None,
+                          size: Union[str, float] = "n/a",
+                          material: str = "n/a",
+                          manufacturer: str = "n/a",
+                          group: str = "n/a",
+                          hemisphere: str = "n/a",
+                          electrode_type: Optional[str] = "ECOG"
+                          ) -> str:
+    """
+    生成 sub-<id>_ses-<id>_electrodes.tsv（含 x/y/z）。
+    要与同级 coordsystem.json 配套使用（指定坐标系与单位）。
+
+    参数
+    ----
+    sub_id, ses_id, bids_root : 组成输出路径  <bids_root>/sub-<sub_id>/ses-<ses_id>/ieeg/
+    coords : 
+        - list/ndarray, 形状 (N, 3)，对应每个电极的 (x,y,z)
+        - dict: { "CH01": (x,y,z), ... }
+        - None: 坐标先写 'n/a'
+    names : list[str]，电极名；未提供则默认 ["CH01"..]（长度取 coords N 或 32）
+    其余参数：写入到非空间属性列（可统一或你按需传入）
+    返回：electrodes.tsv 的绝对路径
+    """
+    bids_root = Path(bids_root)
+    ieeg_dir = bids_root / f"sub-{sub_id}" / f"ses-{ses_id}" / "ieeg"
+    ieeg_dir.mkdir(parents=True, exist_ok=True)
+    out_path = ieeg_dir / f"sub-{sub_id}_ses-{ses_id}_electrodes.tsv"
+
+    if out_path.exists():
+        logger.info(f"[electrodes.tsv] already exists, skip: {out_path}")
+        return str(out_path)
+
+    # 归一化坐标/名称
+    coords_array = None
+    name_list = None
+
+    if isinstance(coords, dict):
+        # 使用字典的键排序（按名称字母序）
+        name_list = sorted(coords.keys()) if names is None else list(names)
+        if names is None:
+            coords_array = np.array([coords[nm] if coords.get(nm) is not None else (np.nan, np.nan, np.nan)
+                                     for nm in name_list], dtype=float)
+    elif coords is not None:
+        coords_array = np.array(coords, dtype=float)
+        if coords_array.ndim != 2 or coords_array.shape[1] != 3:
+            raise ValueError("coords must be (N,3) array-like or dict[name]->(x,y,z)")
+        if names is not None:
+            name_list = list(names)
+        else:
+            # 默认 CH01..CHNN
+            N = coords_array.shape[0]
+            name_list = [f"CH{i:02d}" for i in range(1, N+1)]
+    else:
+        # 无坐标：按名称数量生成，全 'n/a'
+        if names is not None:
+            name_list = list(names)
+        else:
+            name_list = [f"CH{i:02d}" for i in range(1, 33)]
+        coords_array = None  # 用 'n/a' 占位
+
+    # 若传了 names 与 coords，需要长度匹配
+    if coords_array is not None and len(name_list) != coords_array.shape[0]:
+        raise ValueError("len(names) must match coords count")
+
+    # 准备表头
+    header = ["name", "x", "y", "z", "size", "material", "manufacturer", "group", "hemisphere"]
+    if electrode_type is not None:
+        header.append("type")
+
+    # 写文件
+    try:
+        with out_path.open("w", encoding="utf-8", newline="") as f:
+            w = csv.writer(f, delimiter="\t")
+            w.writerow(header)
+            for idx, nm in enumerate(name_list):
+                if coords_array is None:
+                    x = y = z = "n/a"
+                else:
+                    xyz = coords_array[idx]
+                    # 允许 NaN -> 'n/a'
+                    x = "n/a" if np.isnan(xyz[0]) else float(xyz[0])
+                    y = "n/a" if np.isnan(xyz[1]) else float(xyz[1])
+                    z = "n/a" if np.isnan(xyz[2]) else float(xyz[2])
+
+                row = [nm, x, y, z, size, material, manufacturer, group, hemisphere]
+                if electrode_type is not None:
+                    row.append(electrode_type)
+                w.writerow(row)
+        logger.info(f"[electrodes.tsv] generated: {out_path}")
+    except Exception as e:
+        logger.error(f"[electrodes.tsv] write failed: {e}")
+
+    # 友情提示：请确保同级 coordsystem.json 设置了坐标系与单位（例如 Units: 'mm'）
+    return str(out_path)
 
 def detect_01010101_pattern(trigger_data: np.ndarray, logger: logging.Logger, threshold_count: int = 50) -> bool:
     """
