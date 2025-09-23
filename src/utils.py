@@ -860,7 +860,7 @@ def create_coordsystem_json_fallback(sub_id: str,
 
 def create_electrodes_tsv(sub_id: str,
                           ses_id: Optional[str] = None,
-                          bids_root: Union[str, Path] = ".",
+                          bids_root: str = ".",
                           logger: Optional[logging.Logger] = None,
                           coords: Optional[Union[Sequence[Sequence[float]],
                                                  np.ndarray,
@@ -884,13 +884,13 @@ def create_electrodes_tsv(sub_id: str,
 
     要与同级 coordsystem.json 配套使用（若提供坐标，应在 coordsystem.json 指定坐标系与单位）。
     """
-    bids_root = Path(bids_root)
+    bids_root_path = Path(bids_root)
     space_tag = f"_space-{space}" if space else ""
     if ses_id is None:
-        ieeg_dir = bids_root / f"sub-{sub_id}" / "ieeg"
+        ieeg_dir = bids_root_path / f"sub-{sub_id}" / "ieeg"
         out_path = ieeg_dir / f"sub-{sub_id}{space_tag}_electrodes.tsv"
     else:
-        ieeg_dir = bids_root / f"sub-{sub_id}" / f"ses-{ses_id}" / "ieeg"
+        ieeg_dir = bids_root_path / f"sub-{sub_id}" / f"ses-{ses_id}" / "ieeg"
         out_path = ieeg_dir / f"sub-{sub_id}_ses-{ses_id}{space_tag}_electrodes.tsv"
 
     ieeg_dir.mkdir(parents=True, exist_ok=True)

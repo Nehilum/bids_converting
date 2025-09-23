@@ -51,10 +51,10 @@ def main():
 
     # Load configuration file
     try:
-        with open(config.CONFIG_FILE_PATH, "r", encoding="utf-8") as f:
-            config = json.load(f)
+        with open(config.DATA_CONFIG_FILE_PATH, "r", encoding="utf-8") as f:
+            data_config = json.load(f)
     except Exception as e:
-        logger.error(f"Failed to load configuration file {config.CONFIG_FILE_PATH}: {e}")
+        logger.error(f"Failed to load configuration file {config.DATA_CONFIG_FILE_PATH}: {e}")
         return
 
     # 读取样例过滤
@@ -72,7 +72,7 @@ def main():
 
     # Process each subject
     for monkey_name in config.MONKEY_NAMES:
-        process_subject(monkey_name, config, logger, samples_filter)
+        process_subject(monkey_name, data_config, logger, samples_filter)
 
 def process_subject(monkey_name: str, data_config: dict, logger: logging.Logger,
                     samples_filter: Dict) -> None:
@@ -124,9 +124,9 @@ def process_subject(monkey_name: str, data_config: dict, logger: logging.Logger,
     logger.debug(f"Date folders within specified range: {dates_filtered}")
 
     # Create electrodes and coordsystem files if they don't exist
-    create_electrodes_tsv(sub_id=sub_id, ses_id=None, bids_root=BIDS_DATA_DIR_PATH, logger=logger,
+    create_electrodes_tsv(sub_id=sub_id, ses_id=None, bids_root=str(config.BIDS_DATA_DIR_PATH), logger=logger,
                       material="Pt/Ir", manufacturer="CorTec GmbH", group="n/a", hemisphere="n/a")
-    create_coordsystem_json_fallback(sub_id=sub_id, ses_id=None, bids_root=BIDS_DATA_DIR_PATH, logger=logger)
+    create_coordsystem_json_fallback(sub_id=sub_id, ses_id=None, bids_root=str(config.BIDS_DATA_DIR_PATH), logger=logger)
 
     # Process each date folder
     for date_str in dates_filtered:

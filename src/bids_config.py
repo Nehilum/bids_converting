@@ -153,7 +153,7 @@ templates = {
 # Data and output directories
 DATA_DIR_PATH = Path("/work/project/ECoG_Monkey/01_Data")
 BIDS_DATA_DIR_PATH = Path("/work/project/ECoG_Monkey/BIDS_test_clean")
-CONFIG_FILE_PATH = Path("..") / "config.json"
+DATA_CONFIG_FILE_PATH = Path("..") / "config.json"
 SAMPLES_FILE_DEFAULT = Path("..") / "samples.json"
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
