@@ -1,49 +1,56 @@
 # bids_converting
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/downloads/)
+[![pip](https://img.shields.io/badge/pip-supported-blue)](https://pip.pypa.io/)
+[![uv](https://img.shields.io/badge/uv-optional%20but%20recommended-orange)](https://github.com/astral-sh/uv)
+
 
 ## Project Introduction
 
-[TODO: Human to fill in project introduction]
+**bids_converting** is a community-driven Python tool designed to facilitate the conversion of neuroimaging data into the BIDS format. Whether you’re a researcher, developer, or enthusiast, you’re invited to extend, adapt, and apply this project to your needs—all under the permissive MIT License.
+
+[//]: # (TODO: Human to fill in project introduction with your project's actual details and goals.)
+
+---
 
 ## Getting Started
 
 ### Prerequisites
 
-- Python 3.11 or higher
-- [uv](https://github.com/astral-sh/uv) (optional, but recommended) or pip
+- **Python 3.11 or higher**
+- **[uv](https://github.com/astral-sh/uv)** (optional, but recommended) or **pip**
 
 ### Installation
 
-1.  Clone the repository:
-    ```bash
+1. **Clone the repository:**
+    ```
     git clone <repository-url>
     cd bids_converting
     ```
 
-2.  Install the dependencies from `pyproject.toml` using `uv` or `pip`:
-    ** first create a virtual environment**
-    ```bash
+2. **Set up a virtual environment:**
+    ```
     python -m venv venv
     source venv/bin/activate
     ```
-    or use `uv`:
-    ```bash
+    **Or with `uv`:**
+    ```
     uv venv
     uv activate
     ```
 
-    **Using `uv`:**
-    ```bash
+3. **Install dependencies:**
+    **With `uv`:**
+    ```
     uv pip install .
     ```
-
-    ** Using `uv sync` if you want to install as a package:**
-    ```bash
+    **Or as a package:**
+    ```
     uv sync
     ```
-
-    **Using `pip`:**
-    ```bash
+    **With `pip`:**
+    ```
     pip install .
     ```
 
@@ -51,10 +58,15 @@
 
 [TODO: Add usage instructions]
 
-
 ## Open Source & License
 
-**bids_converting** is open source software released under the [MIT License](https://opensource.org/licenses/MIT).
-This means you are free to use, modify, and distribute the code for any purpose, provided you include the original copyright and license notices. The software comes without any warranty—see the [LICENSE](LICENSE) file for full details.
+**bids_converting** is released under the [MIT License](https://opensource.org/licenses/MIT). This means:
 
-If you use this project in your work, please consider citing it. Contributions and feedback are always welcome!
+- You **can** use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software.
+- You **must** include the original copyright and license notices in all copies or substantial portions of the Software.
+- The Software is provided **“AS IS”**, without warranty of any kind.
+- The authors and copyright holders will **not** be liable for any claims, damages, or liabilities.
+
+**If you use this project in your work, please consider citing it. Contributions and feedback are always welcome!**
+
+---
