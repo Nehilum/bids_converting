@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/downloads/)
 [![pip](https://img.shields.io/badge/pip-supported-blue)](https://pip.pypa.io/)
-[![uv](https://img.shields.io/badge/uv-optional%20but%20recommended-orange)](https://github.com/astral-sh/uv)
+[![uv](https://img.shields.io/badge/uv-supported-blue)](https://github.com/astral-sh/uv)
 
 
 ## Project Introduction
