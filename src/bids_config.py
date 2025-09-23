@@ -11,7 +11,7 @@ dataset_description = {
     "ReferencesAndLinks": ["https://example.com/project_page"]
 }
 participants_data = [
-    ["participant_id", "species", "sex", "age"],      # 表头
+    ["participant_id", "species", "sex", "age"],      # table header
     ["sub-monkeyb", "Macaca fuscata", "F", "9"],      # Boss
     ["sub-monkeyc", "Macaca fuscata", "F", "8"]       # Carol
 ]

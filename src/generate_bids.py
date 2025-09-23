@@ -42,7 +42,7 @@ def main():
     logger = setup_logging(info_log="process.log", error_log="error.log")
     logger.info("Starting BIDS data conversion process.")
 
-    # CLI 参数：支持 --samples
+    # CLI argument: support --samples
     ap = argparse.ArgumentParser()
     ap.add_argument("--samples", type=str, default=None,
                     help="Path to samples.json. If set, export only listed subject/post_op_day/tasks.")
@@ -57,12 +57,12 @@ def main():
         logger.error(f"Failed to load configuration file {config.DATA_CONFIG_FILE_PATH}: {e}")
         return
 
-    # 读取样例过滤
+    # Read sample filter
     samples_filter = {}
     if args.samples:
         samples_filter = load_samples(Path(args.samples))
     else:
-        # 也支持“默认路径存在就启用”的懒加载
+        # Also support "enable if default path exists" lazy loading
         if config.SAMPLES_FILE_DEFAULT.exists():
             samples_filter = load_samples(config.SAMPLES_FILE_DEFAULT)
     if samples_filter:
@@ -153,14 +153,14 @@ def process_date(monkey_name: str, sub_id: str, date_str: str, op_day_str: str,
     current_date = datetime.strptime(date_str, "%Y%m%d")
     post_op_day = get_post_op_day(date_str, op_day_str)
     ses_id = f"day{post_op_day:02d}"
-    # 若启用样例过滤：只保留当前 subject 下指定的 post_op_day
-    # subj_samples 形如 {149: {"tasks": ["rest"]}, 337: {"tasks": ["reaching"]}}
+    # If sample filtering is enabled: only keep the specified post_op_day for the current subject
+    # subj_samples is like {149: {"tasks": ["rest"]}, 337: {"tasks": ["reaching"]}}
     allowed_tasks_for_day = None
     if subj_samples:
         if post_op_day not in subj_samples:
             logger.info(f"[samples] skip {monkey_name} {date_str} (post_op_day={post_op_day})")
             return
-        allowed_tasks_for_day = subj_samples[post_op_day].get("tasks")  # 可能是 None
+        allowed_tasks_for_day = subj_samples[post_op_day].get("tasks")  # May be None
 
     json_folder_path = config.DATA_DIR_PATH / "Condition" / monkey_name / date_str
     if not json_folder_path.is_dir():
@@ -189,15 +189,15 @@ def process_date(monkey_name: str, sub_id: str, date_str: str, op_day_str: str,
 
     # Generate BIDS files for each task type
     for task_type, file_name_list in task_type_infos.items():
-        # # Sort the list of file base names in chronological order based on the extracted datetime.
+        # Sort the list of file base names in chronological order based on the extracted datetime.
         file_name_list.sort(key=extract_date_from_filename)
-        # # Initialize the run counter. This counter will be incremented for each file,
+        # Initialize the run counter. This counter will be incremented for each file,
         # ensuring that each run (i.e., each separate recording session for the same task on the same date)
         # is assigned a unique sequential run number.
         run_num = 0
         mapped_task_name = config.TASK_MAPPING_INFO[task_type]["mapped_name"]
         task_description = config.TASK_MAPPING_INFO[task_type]["description"]
-        # 若启用样例过滤，且为本 day 指定了 tasks，则仅保留这些任务（按映射后的名字匹配）
+        # If sample filtering is enabled and tasks are specified for this day, only keep these tasks (match by mapped name)
         if allowed_tasks_for_day is not None:
             if allowed_tasks_for_day and (mapped_task_name not in set(allowed_tasks_for_day)):
                 logger.info(f"[samples] skip task {mapped_task_name} on post_op_day={post_op_day}")
@@ -241,7 +241,7 @@ def process_date(monkey_name: str, sub_id: str, date_str: str, op_day_str: str,
             # generate events.json if not exists
             try:
                 shutil.copy(str(events_file_path), str(bids_events_file_path))
-                # 复制成功后：若无 json 则按任务模板生成
+                # After successful copy: if no json exists, generate according to task template
                 generate_events_json(Path(bids_events_file_path), mapped_task_name, logger)
             except Exception as e:
                 logger.error(f"Failed to copy events file {events_file_path}: {e}")

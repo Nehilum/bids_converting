@@ -11,7 +11,7 @@ import bids_config as config
 
 def generate_readme(bids_root: str):
     """
-    生成顶层 README（最小版）。
+    Generate top-level README.
     """
     text = [
         "# Monkey ECoG Dataset",
@@ -38,7 +38,7 @@ def generate_readme(bids_root: str):
 
 def generate_changes(bids_root: str):
     """
-    生成顶层 CHANGES（初始化一条记录）。
+    Generate top-level CHANGES (initialize with one record).
     """
     today = datetime.today().strftime("%Y-%m-%d")
     text = [
@@ -55,7 +55,7 @@ def generate_changes(bids_root: str):
 
 def ensure_stimuli_dir(bids_root: str):
     """
-    创建 /stimuli 目录与占位说明（不会影响验证）。
+    Create /stimuli directory and placeholder note (does not affect validation).
     """
     stim_dir = os.path.join(bids_root, "stimuli")
     os.makedirs(stim_dir, exist_ok=True)
@@ -67,8 +67,8 @@ def ensure_stimuli_dir(bids_root: str):
 
 def generate_bidsignore(bids_root: str):
     """
-    生成 .bidsignore（忽略与规范无关的辅助目录/文件）。
-    可按需追加 doc/ 或临时输出目录等。
+    Generate .bidsignore (ignore auxiliary directories/files not related to the specification).
+    You can append doc/ or temporary output directories as needed.
     """
     lines = [
         "doc/",
@@ -83,24 +83,19 @@ def generate_bidsignore(bids_root: str):
 
 def generate_dataset_description(bids_root):
     """
-    在BIDS根目录生成dataset_description.json
+    Generate dataset_description.json in the BIDS root directory.
     """
-
-
     out_path = os.path.join(bids_root, "dataset_description.json")
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(config.dataset_description, f, indent=4)
     print(f"[INFO] Generated: {out_path}")
 
-
 def generate_participants_tsv(bids_root):
     """
-    在BIDS根目录生成participants.tsv
-    如果需要，可根据真实实验信息动态生成，例如从数据库或配置文件读取。
+    Generate participants.tsv in the BIDS root directory.
+    If needed, dynamically generate based on actual experimental information, e.g., read from a database or config file.
     """
-    # 示例数据：假设有两只猴子
-
-
+    # Example data: Assume there are two monkeys
     out_path = os.path.join(bids_root, "participants.tsv")
     with open(out_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f, delimiter="\t")
@@ -108,17 +103,14 @@ def generate_participants_tsv(bids_root):
             writer.writerow(row)
     print(f"[INFO] Generated: {out_path}")
 
-
 def generate_participants_json(bids_root):
     """
-    在BIDS根目录生成participants.json，用于解释participants.tsv各列的含义。
+    Generate participants.json in the BIDS root directory, explaining the meaning of each column in participants.tsv.
     """
-
     out_path = os.path.join(bids_root, "participants.json")
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(config.participants_json_content, f, indent=4)
     print(f"[INFO] Generated: {out_path}")
-
 
 def main():
     bids_root = config.DEFAULT_BIDS_ROOT
@@ -128,13 +120,12 @@ def main():
     generate_participants_tsv(bids_root)
     generate_participants_json(bids_root)
 
-    # 新增的全局文件/目录
+    # Newly added global files/directories
     generate_readme(bids_root)
     generate_changes(bids_root)
     ensure_stimuli_dir(bids_root)
     generate_bidsignore(bids_root)
     print("[INFO] All files generated successfully.")
-
 
 if __name__ == "__main__":
     main()
