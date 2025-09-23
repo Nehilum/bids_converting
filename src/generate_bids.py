@@ -12,13 +12,12 @@ import csv
 import shutil
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict
 import chardet
 import argparse
-import yaml
-
+import bids_config as config
 # Import required functions from the utility module
-from utils_test_v1 import (
+from utils import (
     setup_logging,
     extract_date_from_filename,
     load_signals_cortec,
@@ -28,68 +27,12 @@ from utils_test_v1 import (
     get_post_op_day,
     detect_01010101_pattern,
     create_impedance_tsv,
-    generate_events_json, # <--- 新增
-    load_samples, # <--- 新增
-    create_electrodes_tsv,      # <--- 新增
-    create_coordsystem_json_fallback      # <--- 新增
+    generate_events_json,
+    load_samples,
+    create_electrodes_tsv,
+    create_coordsystem_json_fallback
 )
 
-# Mapping from subject name to BIDS ID
-MAP_SUB_NAME_TO_ID = {
-    "Carol": "monkeyc",
-    "Boss": "monkeyb"
-}
-MONKEY_NAMES = ["Boss", "Carol"]
-
-# Task mapping information (only tasks with use_flag=True are processed)
-TASK_MAPPING_INFO = {
-    "association": {
-        "use_flag": False,
-        "mapped_name": "pressing",
-        "description": "",
-    },
-    "association_electric": {
-        "use_flag": False,
-        "mapped_name": "association_electric",
-        "description": "",
-    },
-    "piano": {
-        "use_flag": True,
-        "mapped_name": "listening",
-        "description": "",
-    },
-    "pressing": {
-        "use_flag": True,
-        "mapped_name": "pressing",
-        "description": "",
-    },
-    "reaching": {
-        "use_flag": True,
-        "mapped_name": "reaching",
-        "description": "",
-    },
-    "rest": {
-        "use_flag": True,
-        "mapped_name": "rest",
-        "description": "",
-    },
-    "SEP": {
-        "use_flag": True,
-        "mapped_name": "sep",
-        "description": "",
-    },
-    "word": {
-        "use_flag": False,
-        "mapped_name": "word",
-        "description": "",
-    }
-}
-
-# Data and output directories
-DATA_DIR_PATH = Path("/work/project/ECoG_Monkey/01_Data")
-BIDS_DATA_DIR_PATH = Path("/work/project/ECoG_Monkey/BIDS_test_clean")
-CONFIG_FILE_PATH = Path("..") / "config.json"
-SAMPLES_FILE_DEFAULT = Path("samples.yaml")
 
 def main():
     """
@@ -102,16 +45,16 @@ def main():
     # CLI 参数：支持 --samples
     ap = argparse.ArgumentParser()
     ap.add_argument("--samples", type=str, default=None,
-                    help="Path to samples.yaml. If set, export only listed subject/post_op_day/tasks.")
+                    help="Path to samples.json. If set, export only listed subject/post_op_day/tasks.")
     args = ap.parse_args()
 
 
     # Load configuration file
     try:
-        with open(CONFIG_FILE_PATH, "r", encoding="utf-8") as f:
+        with open(config.CONFIG_FILE_PATH, "r", encoding="utf-8") as f:
             config = json.load(f)
     except Exception as e:
-        logger.error(f"Failed to load configuration file {CONFIG_FILE_PATH}: {e}")
+        logger.error(f"Failed to load configuration file {config.CONFIG_FILE_PATH}: {e}")
         return
 
     # 读取样例过滤
@@ -120,30 +63,30 @@ def main():
         samples_filter = load_samples(Path(args.samples))
     else:
         # 也支持“默认路径存在就启用”的懒加载
-        if SAMPLES_FILE_DEFAULT.exists():
-            samples_filter = load_samples(SAMPLES_FILE_DEFAULT)
+        if config.SAMPLES_FILE_DEFAULT.exists():
+            samples_filter = load_samples(config.SAMPLES_FILE_DEFAULT)
     if samples_filter:
         logger.info(f"Samples filtering enabled: {samples_filter}")
     else:
         logger.info("Samples filtering not enabled (full export).")
 
     # Process each subject
-    for monkey_name in MONKEY_NAMES:
+    for monkey_name in config.MONKEY_NAMES:
         process_subject(monkey_name, config, logger, samples_filter)
 
-def process_subject(monkey_name: str, config: dict, logger: logging.Logger,
+def process_subject(monkey_name: str, data_config: dict, logger: logging.Logger,
                     samples_filter: Dict) -> None:
     """
     Process all data for a single subject.
-    
+
     Parameters:
     - monkey_name: Subject's name (e.g., "Boss" or "Carol")
     - config: Configuration loaded from the config file
     - logger: Logger object for logging messages
     """
     logger.info(f"Starting processing for subject {monkey_name}")
-    sub_id = MAP_SUB_NAME_TO_ID.get(monkey_name, monkey_name.lower())
-    subject_cfg = config.get("subjects", {}).get(monkey_name, {})
+    sub_id = config.MAP_SUB_NAME_TO_ID.get(monkey_name, monkey_name.lower())
+    subject_cfg = data_config.get("subjects", {}).get(monkey_name, {})
 
     # Retrieve subject-specific configuration: broken channels, progressive channels, and date range.
     broken_ch_list = subject_cfg.get("BrokenChannels", [])
@@ -159,9 +102,9 @@ def process_subject(monkey_name: str, config: dict, logger: logging.Logger,
     except Exception as e:
         logger.error(f"Date format error for subject {monkey_name}: {e}")
         return
-    
+
     # Get the subject's condition directory
-    condition_folder_path = DATA_DIR_PATH / "Condition" / monkey_name
+    condition_folder_path = config.DATA_DIR_PATH / "Condition" / monkey_name
     if not condition_folder_path.is_dir():
         logger.error(f"Condition folder does not exist: {condition_folder_path}")
         return
@@ -196,7 +139,7 @@ def process_date(monkey_name: str, sub_id: str, date_str: str, op_day_str: str,
                  subj_samples: Dict[int, Dict]) -> None:
     """
     Process all JSON files in a single date folder and generate corresponding BIDS files.
-    
+
     Parameters:
     - monkey_name: Subject name
     - sub_id: BIDS subject ID
@@ -219,7 +162,7 @@ def process_date(monkey_name: str, sub_id: str, date_str: str, op_day_str: str,
             return
         allowed_tasks_for_day = subj_samples[post_op_day].get("tasks")  # 可能是 None
 
-    json_folder_path = DATA_DIR_PATH / "Condition" / monkey_name / date_str
+    json_folder_path = config.DATA_DIR_PATH / "Condition" / monkey_name / date_str
     if not json_folder_path.is_dir():
         logger.error(f"JSON folder does not exist: {json_folder_path}")
         return
@@ -241,19 +184,19 @@ def process_date(monkey_name: str, sub_id: str, date_str: str, op_day_str: str,
             continue
 
         task_type = condition_data.get("Task Type")
-        if task_type in TASK_MAPPING_INFO and TASK_MAPPING_INFO[task_type]["use_flag"]:
+        if task_type in config.TASK_MAPPING_INFO and config.TASK_MAPPING_INFO[task_type]["use_flag"]:
             task_type_infos.setdefault(task_type, []).append(json_file.stem)
 
     # Generate BIDS files for each task type
     for task_type, file_name_list in task_type_infos.items():
         # # Sort the list of file base names in chronological order based on the extracted datetime.
         file_name_list.sort(key=extract_date_from_filename)
-        # # Initialize the run counter. This counter will be incremented for each file, 
-        # ensuring that each run (i.e., each separate recording session for the same task on the same date) 
+        # # Initialize the run counter. This counter will be incremented for each file,
+        # ensuring that each run (i.e., each separate recording session for the same task on the same date)
         # is assigned a unique sequential run number.
         run_num = 0
-        mapped_task_name = TASK_MAPPING_INFO[task_type]["mapped_name"]
-        task_description = TASK_MAPPING_INFO[task_type]["description"]
+        mapped_task_name = config.TASK_MAPPING_INFO[task_type]["mapped_name"]
+        task_description = config.TASK_MAPPING_INFO[task_type]["description"]
         # 若启用样例过滤，且为本 day 指定了 tasks，则仅保留这些任务（按映射后的名字匹配）
         if allowed_tasks_for_day is not None:
             if allowed_tasks_for_day and (mapped_task_name not in set(allowed_tasks_for_day)):
@@ -265,9 +208,9 @@ def process_date(monkey_name: str, sub_id: str, date_str: str, op_day_str: str,
             # Increment the run number for each file processed.
             run_num += 1
             edf_file_name = f"sub-{sub_id}_ses-{ses_id}_task-{mapped_task_name}_run-{run_num:02}_ieeg.edf"
-            edf_file_path = BIDS_DATA_DIR_PATH / f"sub-{sub_id}" / f"ses-{ses_id}" / "ieeg" / edf_file_name
+            edf_file_path = config.BIDS_DATA_DIR_PATH / f"sub-{sub_id}" / f"ses-{ses_id}" / "ieeg" / edf_file_name
 
-            bin_file_path = DATA_DIR_PATH / "CortecData" / monkey_name / date_str / f"{base_file_name}.bin"
+            bin_file_path = config.DATA_DIR_PATH / "CortecData" / monkey_name / date_str / f"{base_file_name}.bin"
 
             try:
                 data_st = load_signals_cortec(str(bin_file_path), interp_method="linear+nearest")
@@ -288,9 +231,9 @@ def process_date(monkey_name: str, sub_id: str, date_str: str, op_day_str: str,
 
             # Copy events file
             events_file_name = f"{base_file_name}_events.tsv"
-            events_file_path = DATA_DIR_PATH / "Events" / monkey_name / date_str / events_file_name
+            events_file_path = config.DATA_DIR_PATH / "Events" / monkey_name / date_str / events_file_name
             bids_events_file_name = f"sub-{sub_id}_ses-{ses_id}_task-{mapped_task_name}_run-{run_num:02}_events.tsv"
-            bids_events_file_path = BIDS_DATA_DIR_PATH / f"sub-{sub_id}" / f"ses-{ses_id}" / "ieeg" / bids_events_file_name
+            bids_events_file_path = config.BIDS_DATA_DIR_PATH / f"sub-{sub_id}" / f"ses-{ses_id}" / "ieeg" / bids_events_file_name
             try:
                 shutil.copy(str(events_file_path), str(bids_events_file_path))
             except Exception as e:
@@ -305,7 +248,7 @@ def process_date(monkey_name: str, sub_id: str, date_str: str, op_day_str: str,
 
             # Generate channels.tsv file using unified channel configuration
             bids_channels_file_name = f"sub-{sub_id}_ses-{ses_id}_task-{mapped_task_name}_run-{run_num:02}_channels.tsv"
-            bids_channels_file_path = BIDS_DATA_DIR_PATH / f"sub-{sub_id}" / f"ses-{ses_id}" / "ieeg" / bids_channels_file_name
+            bids_channels_file_path = config.BIDS_DATA_DIR_PATH / f"sub-{sub_id}" / f"ses-{ses_id}" / "ieeg" / bids_channels_file_name
             try:
                 create_channels_tsv_file(str(bids_channels_file_path), data_st,
                                            measurement_date=current_date,
@@ -316,7 +259,7 @@ def process_date(monkey_name: str, sub_id: str, date_str: str, op_day_str: str,
 
             # Generate iEEG JSON file
             bids_json_file_name = f"sub-{sub_id}_ses-{ses_id}_task-{mapped_task_name}_run-{run_num:02}_ieeg.json"
-            bids_json_file_path = BIDS_DATA_DIR_PATH / f"sub-{sub_id}" / f"ses-{ses_id}" / "ieeg" / bids_json_file_name
+            bids_json_file_path = config.BIDS_DATA_DIR_PATH / f"sub-{sub_id}" / f"ses-{ses_id}" / "ieeg" / bids_json_file_name
             try:
                 create_ieeg_json_file(data_st, str(bids_json_file_path),
                                       task_name=mapped_task_name,
@@ -331,12 +274,12 @@ def process_date(monkey_name: str, sub_id: str, date_str: str, op_day_str: str,
 
             # Generate impedance TSV file if impedance data exists
             create_impedance_tsv(sub_id, post_op_day, date_str,
-                                 str(DATA_DIR_PATH / "Impedance" / monkey_name),
-                                 str(BIDS_DATA_DIR_PATH), logger)
+                                 str(config.DATA_DIR_PATH / "Impedance" / monkey_name),
+                                 str(config.BIDS_DATA_DIR_PATH), logger)
 
     # Generate scans.tsv file for the session if scans_info is not empty
     if scans_info:
-        ses_dir_path = BIDS_DATA_DIR_PATH / f"sub-{sub_id}" / f"ses-{ses_id}"
+        ses_dir_path = config.BIDS_DATA_DIR_PATH / f"sub-{sub_id}" / f"ses-{ses_id}"
         if not ses_dir_path.exists():
             ses_dir_path.mkdir(parents=True, exist_ok=True)
         scans_tsv_name = f"sub-{sub_id}_ses-{ses_id}_scans.tsv"
@@ -350,7 +293,7 @@ def process_date(monkey_name: str, sub_id: str, date_str: str, op_day_str: str,
                     writer.writerow(row)
             logger.info(f"Scans TSV file generated successfully: {scans_tsv_path}")
         except Exception as e:
-            logger.error(f"Failed to generate scans.tsv: {e}")    
+            logger.error(f"Failed to generate scans.tsv: {e}")
 
 if __name__ == "__main__":
     main()

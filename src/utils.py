@@ -12,7 +12,7 @@ import os
 from datetime import datetime
 from pathlib import Path
 from typing import Tuple, Dict, Any, Optional, Sequence, Union
-import yaml
+import bids_config as config
 
 import numpy as np
 from scipy.interpolate import RegularGridInterpolator
@@ -26,11 +26,11 @@ DEFAULT_HIGH_CUTOFF = 325
 def setup_logging(info_log: str = "process.log", error_log: str = "error.log") -> logging.Logger:
     """
     Set up the logger for the application.
-    
+
     Parameters:
     - info_log: File path for INFO level logs.
     - error_log: File path for WARNING and higher level logs.
-    
+
     Returns:
     - Configured Logger object.
     """
@@ -67,11 +67,11 @@ warnings.filterwarnings('ignore')
 def get_post_op_day(date_str: str, surgery_date_str: str = "20240501") -> int:
     """
     Calculate the post-operative day based on measurement date and surgery date.
-    
+
     Parameters:
     - date_str: Measurement date in "YYYYMMDD" format.
     - surgery_date_str: Surgery date in "YYYYMMDD" format (default: "20240501").
-    
+
     Returns:
     - The number of days after surgery as an integer.
     """
@@ -83,10 +83,10 @@ def get_post_op_day(date_str: str, surgery_date_str: str = "20240501") -> int:
 def extract_date_from_filename(filename: str) -> datetime:
     """
     Extract date and time information from the filename and convert to a datetime object.
-    
+
     Parameters:
     - filename: Filename containing date/time info (e.g., "cortec_20240501T123456...").
-    
+
     Returns:
     - A datetime object.
     """
@@ -102,33 +102,33 @@ def extract_date_from_filename(filename: str) -> datetime:
 def load_signals_cortec(data_fpath: str, interp_method: str = "none") -> Dict[str, Any]:
     """
     Load Cortec data from the corresponding .hdr and .bin files, and perform interpolation if required.
-    
+
     Parameters:
     - data_fpath: Path to the data file (must end with .bin or .hdr).
     - interp_method: Interpolation method. Currently supports "linear+nearest".
-    
+
     Returns:
     - A dictionary containing signal data and metadata.
     """
     logging.info(f"Loading signals from {data_fpath} with interpolation method: {interp_method}")
-    
+
     if not data_fpath.endswith((".bin", ".hdr")):
         raise ValueError(f"{data_fpath}: Invalid file extension")
-    
+
     base_fpath = os.path.splitext(data_fpath)[0]
     hdr_fpath = f"{base_fpath}.hdr"
     bin_fpath = f"{base_fpath}.bin"
-    
+
     # Read the header file
     with open(hdr_fpath, "r", encoding="utf-8") as f:
         hdr_lines = f.readlines()
-        
+
     main_header = hdr_lines[0].strip()
     reference_channel_line = hdr_lines[1].strip() if len(hdr_lines) >= 2 else None
     amplification = hdr_lines[2].strip() if len(hdr_lines) >= 3 else None
     ground_line = hdr_lines[3].strip() if len(hdr_lines) >= 4 else None
     ground = ground_line.lower() if ground_line and ground_line.lower() in ["true", "false"] else "false"
-    
+
     header_parts = main_header.split(";")
     if len(header_parts) != 7:
         raise ValueError(f"{hdr_fpath}: Header format is incorrect")
@@ -141,30 +141,30 @@ def load_signals_cortec(data_fpath: str, interp_method: str = "none") -> Dict[st
     channel_names = header_parts[6].split(":")
     if len(channel_names) != ch_num_total:
         raise ValueError(f"{hdr_fpath}: Number of channels mismatch. Expected: {ch_num_total}, Actual: {len(channel_names)}")
-    
+
     # Process the reference channel
     if reference_channel_line and reference_channel_line.isdigit():
         ref_idx = int(reference_channel_line)
         reference_channel = channel_names[ref_idx] if 0 <= ref_idx < ch_num_total else None
     else:
         reference_channel = None
-    
+
     # Read the binary file
     with open(bin_fpath, "rb") as f:
         data_uint8 = f.read()
-    
+
     byte_num_per_sample = 8 + 4 + 4 * ch_num_total
     remainder = len(data_uint8) % byte_num_per_sample
     if remainder > 0:
         data_uint8 = data_uint8[:-remainder]
-    
+
     samples = len(data_uint8) // byte_num_per_sample
     data_uint8 = np.frombuffer(data_uint8, dtype=np.uint8).reshape(samples, byte_num_per_sample)
-    
+
     unix_time_ms = np.frombuffer(data_uint8[:, 0:8].tobytes(), dtype=np.int64)
     sample_index = np.frombuffer(data_uint8[:, 8:12].tobytes(), dtype=np.uint32)
     signals = np.frombuffer(data_uint8[:, 12:].tobytes(), dtype=np.float32).reshape(samples, ch_num_total)
-    
+
     data_st = {
         "sampling_rate": sampling_rate,
         "threshold_high": threshold_high,
@@ -179,13 +179,13 @@ def load_signals_cortec(data_fpath: str, interp_method: str = "none") -> Dict[st
         "amplification": amplification,
         "ground": ground
     }
-    
+
     # Perform interpolation if requested
     if interp_method == "linear+nearest":
         interpolated_signals, interp_mask = interpolate_signals(signals, sample_index, channel_names)
         data_st["signals"] = interpolated_signals
         data_st["interp_mask"] = interp_mask
-    
+
     logging.info(f"Successfully loaded signal data from {data_fpath}")
     return data_st
 
@@ -194,49 +194,49 @@ def interpolate_signals(signals: np.ndarray, sample_indices: np.ndarray, channel
     Perform interpolation on the input signals.
     Channels starting with "CH" are interpolated using linear interpolation,
     while other channels use nearest-neighbor interpolation.
-    
+
     Parameters:
     - signals: Original signal array (num_samples x num_channels)
     - sample_indices: Array of original sampling indices
     - channel_names: List of channel names
-    
+
     Returns:
     - interpolated_signals: The interpolated signal array
     - interp_mask: A mask array indicating interpolated samples (1 for interpolated, 0 for original)
     """
     logging.info("Starting signal interpolation.")
-    
+
     if signals.size == 0:
         return signals, np.zeros_like(signals, dtype=np.int16)
-    
+
     # Use the actual first sample index as the start to avoid unwanted extrapolation.
     start_idx = sample_indices[0]
     end_idx = sample_indices[-1]
     full_range = np.arange(start_idx, end_idx + 1)
     num_samples = len(full_range)
     num_channels = signals.shape[1]
-    
+
     interpolated_signals = np.zeros((num_samples, num_channels), dtype=np.float32)
     interp_mask = np.zeros((num_samples, num_channels), dtype=np.int16)
-    
+
     for ch_idx, ch_name in enumerate(channel_names):
         # Select interpolation method based on channel name.
         method = "linear" if ch_name.startswith("CH") else "nearest"
         interp_func = RegularGridInterpolator(
-            (sample_indices,), 
+            (sample_indices,),
             signals[:, ch_idx],
-            method=method, 
-            bounds_error=False, 
+            method=method,
+            bounds_error=False,
             fill_value=None
         )
         # Interpolate on the full range.
         interpolated_channel = interp_func(full_range)
         interpolated_signals[:, ch_idx] = interpolated_channel
-        
+
         # Create mask: mark points not in the original sample_indices as interpolated.
         original_mask = np.isin(full_range, sample_indices)
         interp_mask[:, ch_idx] = (~original_mask).astype(np.int16)
-    
+
     logging.info("Signal interpolation completed.")
     return interpolated_signals, interp_mask
 
@@ -244,12 +244,12 @@ def append_interp_mask_to_signals(signals: np.ndarray, interp_mask: np.ndarray, 
     """
     Append a combined interpolation mask as an additional channel to the signals.
     The combined mask is computed as the logical OR across all channels of the interpolation mask.
-    
+
     Parameters:
     - signals: Original signal array (num_samples x num_channels)
     - interp_mask: Interpolation mask array of the same shape as signals
     - channel_names: List of original channel names
-    
+
     Returns:
     - new_signals: Updated signals array with the appended mask column
     - new_channel_names: Updated list of channel names with "Misc_InterpMask" added
@@ -266,7 +266,7 @@ def create_edf_file(data_st: Dict[str, Any], edf_file_path: str, start_datetime:
                     patient_name: str, patient_code: str) -> None:
     """
     Generate an EDF file from the provided signal data and metadata.
-    
+
     Parameters:
     - data_st: Dictionary containing signal data and metadata, including:
         - "signals": The signal array (num_samples x num_channels)
@@ -281,11 +281,11 @@ def create_edf_file(data_st: Dict[str, Any], edf_file_path: str, start_datetime:
     logging.info(f"Generating EDF file: {edf_file_path} (Patient: {patient_name})")
     out_dir = Path(edf_file_path).parent
     out_dir.mkdir(parents=True, exist_ok=True)
-    
+
     signals = data_st["signals"]
     channel_names = data_st["channel_names"]
     sample_frequency = data_st["sampling_rate"]
-    
+
     # Append the interpolation mask channel.
     # The 'interp_mask' is always present (it will be all zeros if no interpolation occurred).
     if "interp_mask" in data_st:
@@ -294,7 +294,7 @@ def create_edf_file(data_st: Dict[str, Any], edf_file_path: str, start_datetime:
             logging.error("Interpolation mask shape does not match signals. Skipping mask addition.")
         else:
             signals, channel_names = append_interp_mask_to_signals(signals, interp_mask, channel_names)
-    
+
     n_channels = len(channel_names)
     edf_writer = pyedflib.EdfWriter(edf_file_path, n_channels=n_channels,
                                     file_type=pyedflib.FILETYPE_EDFPLUS)
@@ -302,7 +302,7 @@ def create_edf_file(data_st: Dict[str, Any], edf_file_path: str, start_datetime:
     edf_writer.setPatientCode(patient_code)
     edf_writer.setSex(0)  # Set sex to 0 (assumed default)
     edf_writer.setStartdatetime(start_datetime)
-    
+
     channel_info = []
     for i, channel_name in enumerate(channel_names):
         # Compute physical minimum and maximum from the signals.
@@ -310,7 +310,7 @@ def create_edf_file(data_st: Dict[str, Any], edf_file_path: str, start_datetime:
         physical_max = np.nanmax(signals[:, i])
         if np.isnan(physical_min) or np.isnan(physical_max) or (physical_min == physical_max):
             physical_min, physical_max = -1000, 1000
-        
+
         # Set dimension based on channel type.
         if channel_name == "Misc_InterpMask":
             dimension = "binary"
@@ -318,7 +318,7 @@ def create_edf_file(data_st: Dict[str, Any], edf_file_path: str, start_datetime:
             dimension = "uV"
         else:
             dimension = "trigger"
-        
+
         ch_dict = {
             "label": channel_name,
             "dimension": dimension,
@@ -329,27 +329,22 @@ def create_edf_file(data_st: Dict[str, Any], edf_file_path: str, start_datetime:
             "digital_min": -32768,
         }
         channel_info.append(ch_dict)
-    
+
     edf_writer.setSignalHeaders(channel_info)
     edf_writer.writeSamples(signals.T)
     edf_writer.writeAnnotation(0, -1, "Start Recording")
     edf_writer.close()
-    
+
     logging.info(f"EDF file generated successfully: {edf_file_path}")
 
 def load_samples(samples_path: Path) -> Dict:
     """
-    读取 samples.yaml，返回结构：
-    {
-      "Boss": {149: {"tasks": ["rest"]}, 337: {"tasks": ["reaching"]}},
-      "Carol": {...}
-    }
-    若文件不存在或为空，返回 {}。
+    load small dataset samples.json
     """
     if not samples_path.exists():
         return {}
     with samples_path.open("r", encoding="utf-8") as f:
-        data = yaml.safe_load(f) or {}
+        data = json.load(f) or {}
     out = {}
     for subj, items in (data.get("subjects") or {}).items():
         out[subj] = {}
@@ -357,9 +352,10 @@ def load_samples(samples_path: Path) -> Dict:
             pod = it.get("post_op_day")
             if pod is None:
                 continue
-            tasks = it.get("tasks")  # 允许 None 或 []
+            tasks = it.get("tasks")
             out[subj][int(pod)] = {"tasks": tasks}
     return out
+
 
 def generate_events_json(tsv_path: Path, mapped_task_name: str, logger) -> None:
     """
@@ -376,7 +372,7 @@ def generate_events_json(tsv_path: Path, mapped_task_name: str, logger) -> None:
         logger.info(f"[events.json] already exists, skip: {json_path}")
         return
 
-    # 读取 TSV 表头
+
     try:
         with tsv_path.open("r", encoding="utf-8") as f:
             reader = csv.reader(f, delimiter="\t")
@@ -388,76 +384,12 @@ def generate_events_json(tsv_path: Path, mapped_task_name: str, logger) -> None:
         logger.warning(f"[events.json] empty header in {tsv_path}, skip.")
         return
 
-    # 任务模板（按你提供的语义；只会选择 header 中实际存在的列）
-    templates = {
-        "rest": {
-            "onset":        {"Description": "Event onset time relative to run start", "Units": "s"},
-            "duration":     {"Description": "Event duration", "Units": "s"},
-            "trial_type":   {"Description": "Type of event",
-                             "Levels": {"rest_start": "Beginning of eyes-open resting state block (single row event)"}},
-            "stim_file":    {"Description": "Associated stimulus file name if any, else 'n/a'"},
-            "response_type":{"Description": "Response effector or button label if any, else 'n/a'"},
-            "response_time":{"Description": "Latency between stimulus and response when applicable", "Units": "s"},
-        },
-        "sep": {
-            "onset":      {"Description": "Pulse onset", "Units": "s"},
-            "duration":   {"Description": "Pulse duration", "Units": "s"},
-            "trial_type": {"Description": "Type of event",
-                           "Levels": {"ssep_stim": "Somatosensory electrical pulse on"}},
-            "stim_side":  {"Description": "Side of stimulation",
-                           "Levels": {"Left": "Left wrist stimulation", "Right": "Right wrist stimulation"}},
-            "amplitude_mA": {"Description": "Stimulation current amplitude", "Units": "mA"},
-            "response_type":{"Description": "Response effector/button if present, else 'n/a'"},
-            "response_time":{"Description": "Response latency if present", "Units": "s"},
-        },
-        # piano 在脚本中映射为 listening
-        "listening": {
-            "onset":      {"Description": "Stimulus onset", "Units": "s"},
-            "duration":   {"Description": "Stimulus duration", "Units": "s"},
-            "trial_type": {"Description": "Type of event",
-                           "Levels": {"stimulus_on": "Auditory stimulus onset"}},
-            "stim_file":  {"Description": "Presented audio file name (e.g., 'DoMi.wav')"},
-            "response_type":{"Description": "Participant response effector if any, else 'n/a'"},
-            "response_time":{"Description": "Response latency if present", "Units": "s"},
-        },
-        "word": {
-            "onset":      {"Description": "Stimulus onset", "Units": "s"},
-            "duration":   {"Description": "Stimulus duration", "Units": "s"},
-            "trial_type": {"Description": "Type of event",
-                           "Levels": {"stimulus_on": "Auditory stimulus onset"}},
-            "stim_file":  {"Description": "Presented audio file name"},
-            "response_type":{"Description": "Participant response effector if any, else 'n/a'"},
-            "response_time":{"Description": "Response latency if present", "Units": "s"},
-        },
-        "pressing": {
-            "onset":      {"Description": "Detected movement/press onset", "Units": "s"},
-            "duration":   {"Description": "Not applicable for discrete keypress events", "Units": "s"},
-            "trial_type": {"Description": "Type of event",
-                           "Levels": {"movement_start": "Onset of button press from start-button-referenced parsing",
-                                      "movement_done":  "Response button press when there is no start-button reference"}},
-            "stim_file":  {"Description": "Task has no external stimulus; set to 'n/a'"},
-            "response_type":{"Description": "Which button was pressed",
-                             "Levels": {"left_button": "Left-hand (or left-side) button",
-                                        "right_button":"Right-hand (or right-side) button"}},
-            "response_time":{"Description": "Latency if defined by paradigm; 'n/a' in current script", "Units": "s"},
-        },
-        "reaching": {
-            "onset":      {"Description": "Detected reach movement onset", "Units": "s"},
-            "duration":   {"Description": "Not applicable for discrete movement onset events", "Units": "s"},
-            "trial_type": {"Description": "Type of event",
-                           "Levels": {"movement_start": "Reach movement onset",
-                                      "movement_done":  "Reach movement done (= response button) when no start-button"}},
-            "stim_file":  {"Description": "No external stimulus; 'n/a'"},
-            "response_type":{"Description": "Effector used for the reach",
-                             "Levels": {"left_hand": "Left hand reach",
-                                        "right_hand":"Right hand reach"}},
-            "response_time":{"Description": "Latency if defined by paradigm; 'n/a' in current script", "Units": "s"},
-        },
-    }
+
+
 
     # 归一化任务名（确保使用映射后的名）
     key = (mapped_task_name or "").lower()
-    tmpl = templates.get(key, None)
+    tmpl = config.templates.get(key, None)
 
     # 根据 header 生成 JSON：优先模板里对应列；其余列给通用描述
     out = {}
@@ -479,12 +411,11 @@ def generate_events_json(tsv_path: Path, mapped_task_name: str, logger) -> None:
         logger.info(f"[events.json] generated: {json_path}")
     except Exception as e:
         logger.error(f"[events.json] write failed: {e}")
-        
+
 def create_ieeg_json_file(
     data_meta: dict,
     out_json_path: str,
     *,
-    # —— 任务/环境（与你现有保持一致的默认）——
     task_name: str = "",
     task_description: str = "",
     instructions: str = "n/a",
@@ -495,9 +426,9 @@ def create_ieeg_json_file(
     institution_name: str = "Osaka University Graduate School of Medicine",
     institutional_department_name: str = "n/a",
     institution_address: str = "n/a",
-    # —— 仅 ECoG 有效；其它固定 0 —— 
+    # —— 仅 ECoG 有效；其它固定 0 ——
     misc_channel_count_default: int = 0,  # 仅在无法从 channel_names 判断 TR 时作为兜底
-    # —— 记录与硬件 —— 
+    # —— 记录与硬件 ——
     recording_type: str = "continuous",
     software_versions: str = "Unknown",
     ieeg_placement_scheme: str = "",
@@ -510,7 +441,7 @@ def create_ieeg_json_file(
     ieeg_ground: str = "Upper back",
     electrical_stimulation: bool = False,
     electrical_stimulation_parameters: str = "n/a",
-    # —— 推荐键最小补全清单 —— 
+    # —— 推荐键最小补全清单 ——
     device_serial_number: str = "n/a",
     epoch_length: str = "n/a",
     ieeg_electrode_groups: str = "n/a",
@@ -566,7 +497,7 @@ def create_ieeg_json_file(
         "InstitutionalDepartmentName": institutional_department_name,
         "InstitutionAddress": institution_address,
 
-        # —— 推荐键最小补全 —— 
+        # —— 推荐键最小补全 ——
         "DeviceSerialNumber": device_serial_number,
         "EpochLength": epoch_length,
         "iEEGElectrodeGroups": ieeg_electrode_groups,
@@ -574,7 +505,7 @@ def create_ieeg_json_file(
         "CogAtlasID": cog_atlas_id,
         "CogPOID": cogpo_id,
 
-        # —— 通道计数 —— 
+        # —— 通道计数 ——
         "ECOGChannelCount": ecog_count,
         "SEEGChannelCount": 0,
         "EEGChannelCount": 0,
@@ -584,7 +515,7 @@ def create_ieeg_json_file(
         "TriggerChannelCount": trigger_count,
         "MiscChannelCount": misc_count,
 
-        # —— 记录属性与电极信息 —— 
+        # —— 记录属性与电极信息 ——
         "RecordingDuration": recording_duration_sec,
         "RecordingType": recording_type,
         "SoftwareVersions": software_versions,
@@ -596,11 +527,11 @@ def create_ieeg_json_file(
         "ElectricalStimulation": bool(electrical_stimulation),
         "ElectricalStimulationParameters": electrical_stimulation_parameters,
     }
-    
+
     out_dir = os.path.dirname(out_json_path)
     if out_dir and not os.path.exists(out_dir):
         os.makedirs(out_dir, exist_ok=True)
-    
+
     try:
         with open(out_json_path, 'w', encoding='utf-8') as f:
             json.dump(ieeg_json_dict, f, ensure_ascii=False, indent=4)
@@ -614,16 +545,16 @@ def unify_channel_data(broken_channels: list,
                        measurement_date: datetime) -> Dict[str, Dict[str, Any]]:
     """
     Update the default channel configuration based on broken and progressive channel info.
-    
-    This function always includes the 'Misc_InterpMask' channel because the interpolation mask exists 
+
+    This function always includes the 'Misc_InterpMask' channel because the interpolation mask exists
     even when no interpolation is performed (in such cases, all mask values are 0).
-    
+
     Parameters:
     - broken_channels: List of broken channels.
     - progressive_channels: Dictionary with progressive channel information.
     - default_channels: Default channel configuration obtained from get_default_channel_data().
     - measurement_date: The measurement date as a datetime object.
-    
+
     Returns:
     - Updated channel configuration dictionary.
     """
@@ -691,13 +622,13 @@ def unify_channel_data(broken_channels: list,
         "status": "good",
         "status_description": "Interpolation mask channel (1 indicates interpolated sample, 0 indicates original)"
     }
-    
+
     return unified_channels
 
 def get_default_channel_data() -> Dict[str, Dict[str, Any]]:
     """
     Return a dictionary of default channel information.
-    
+
     Returns:
     - A dictionary with channel names as keys and default channel settings as values.
     """
@@ -758,7 +689,7 @@ def create_channels_tsv_file(out_tsv_path: str, data_st: dict, measurement_date:
                              progressive_channels: Optional[Dict[str, Dict[str, str]]] = None) -> None:
     """
     Generate channels.tsv file by unifying channel configuration.
-    
+
     Parameters:
     - data_st: Dictionary containing raw channel information, such as data_st["channel_names"] and sampling rate.
     - broken_channels: List of broken channels.
@@ -772,11 +703,11 @@ def create_channels_tsv_file(out_tsv_path: str, data_st: dict, measurement_date:
                                           progressive_channels or {},
                                           default_channels,
                                           measurement_date)
-    
+
     out_dir = os.path.dirname(out_tsv_path)
     if out_dir and not os.path.exists(out_dir):
         os.makedirs(out_dir, exist_ok=True)
-    
+
     with open(out_tsv_path, "w", encoding="utf-8", newline="") as f:
         writer = csv.writer(f, delimiter="\t")
         writer.writerow(["name", "type", "units", "low_cutoff", "high_cutoff", "sampling_frequency", "group", "status", "status_description"])
@@ -826,7 +757,7 @@ def create_impedance_tsv(sub_id: str, ses_day: int, date_str: str, impedance_sou
            and f.endswith(".csv")
            and f.startswith(date_str)
     ]
-    
+
     if not impedance_files:
         logger.info(f"No impedance files found for date {date_str}; skipping.")
         return
@@ -842,7 +773,7 @@ def create_impedance_tsv(sub_id: str, ses_day: int, date_str: str, impedance_sou
             measure_time_str = parts[1] if len(parts) >= 2 else "000000"
         else:
             measure_time_str = "000000"
-        
+
         imp_file_path = os.path.join(impedance_source_dir, imp_file)
         try:
             with open(imp_file_path, "r", encoding="utf-8") as fin:
@@ -869,7 +800,7 @@ def create_impedance_tsv(sub_id: str, ses_day: int, date_str: str, impedance_sou
     os.makedirs(ses_dir, exist_ok=True)
     out_imp_name = f"sub-{sub_id}_ses-day{ses_day:02d}_impedance.tsv"
     out_imp_path = os.path.join(ses_dir, out_imp_name)
-    
+
     try:
         with open(out_imp_path, "w", encoding="utf-8", newline="") as fout:
             writer = csv.writer(fout, delimiter="\t")
@@ -952,7 +883,7 @@ def create_electrodes_tsv(sub_id: str,
         sub-<id>/ses-<ses>/ieeg/sub-<id>_ses-<ses>[_space-<label>]_electrodes.tsv
 
     要与同级 coordsystem.json 配套使用（若提供坐标，应在 coordsystem.json 指定坐标系与单位）。
-    """    
+    """
     bids_root = Path(bids_root)
     space_tag = f"_space-{space}" if space else ""
     if ses_id is None:
@@ -1034,13 +965,13 @@ def create_electrodes_tsv(sub_id: str,
 def detect_01010101_pattern(trigger_data: np.ndarray, logger: logging.Logger, threshold_count: int = 50) -> bool:
     """
     Detect if the trigger data contains a significant number of alternating patterns (e.g., 01010101).
-    
+
     Parameters:
     - trigger_data: A numpy array containing trigger data (0s and 1s). Can be 1D or 2D (each column is a channel).
     - logger: Logger object for debug logging.
-    - threshold_count: Threshold count; if the total number of detected patterns across channels 
+    - threshold_count: Threshold count; if the total number of detected patterns across channels
                         meets or exceeds this value, return True.
-    
+
     Returns:
     - True if the number of alternating patterns meets or exceeds the threshold; otherwise False.
     """

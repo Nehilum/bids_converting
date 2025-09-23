@@ -12,6 +12,5 @@ dependencies = [
   "numpy",
   "scipy",
   "pyEDFlib",
-  "PyYAML",
   "chardet",
 ]

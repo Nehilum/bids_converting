@@ -1,0 +1,32 @@
+{
+  "subjects": {
+    "Boss": [
+      {
+        "post_op_day": 149,
+        "tasks": ["rest"]
+      },
+      {
+        "post_op_day": 337,
+        "tasks": ["reaching"]
+      },
+      {
+        "post_op_day": 27,
+        "tasks": ["listening"]
+      },
+      {
+        "post_op_day": 275,
+        "tasks": ["sep"]
+      },
+      {
+        "post_op_day": 24,
+        "tasks": ["pressing"]
+      }
+    ],
+    "Carol": [
+      {
+        "post_op_day": 315,
+        "tasks": ["pressing"]
+      }
+    ]
+  }
+}
