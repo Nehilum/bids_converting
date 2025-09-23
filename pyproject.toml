@@ -1,0 +1,17 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "bids_converting"
+version = "0.1.0"
+description = "A tool for converting datasets to BIDS format."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "numpy",
+  "scipy",
+  "pyEDFlib",
+  "PyYAML",
+  "chardet",
+]
