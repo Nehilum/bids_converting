@@ -1,4 +1,5 @@
 from pathlib import Path
+import os
 dataset_description = {
     "Name": "Monkey ECoG Dataset",
     "BIDSVersion": "1.7.0",
@@ -154,3 +155,7 @@ DATA_DIR_PATH = Path("/work/project/ECoG_Monkey/01_Data")
 BIDS_DATA_DIR_PATH = Path("/work/project/ECoG_Monkey/BIDS_test_clean")
 CONFIG_FILE_PATH = Path("..") / "config.json"
 SAMPLES_FILE_DEFAULT = Path("samples.json")
+
+script_dir = os.path.dirname(os.path.abspath(__file__))
+project_dir = os.path.abspath(os.path.join(script_dir, ".."))
+DEFAULT_BIDS_ROOT = os.path.join(project_dir, "BIDS_data")

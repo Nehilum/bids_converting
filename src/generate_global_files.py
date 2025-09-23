@@ -121,16 +121,7 @@ def generate_participants_json(bids_root):
 
 
 def main():
-    # 获取当前脚本所在目录
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    # 上上级目录 (举例: 如果脚本在 scripts/ 下面, 那上上级就是项目根目录)
-    two_levels_up_dir = os.path.abspath(os.path.join(script_dir, "..", ".."))
-
-    # 然后假设我们想要在 "bids_data" 这个子文件夹下生成BIDS根目录
-    # bids_root = /.../two_levels_up_dir/bids_data
-    bids_root = os.path.join(two_levels_up_dir, "BIDS_test_v4")
-
-
+    bids_root = config.DEFAULT_BIDS_ROOT
     os.makedirs(bids_root, exist_ok=True)
 
     generate_dataset_description(bids_root)
