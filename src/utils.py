@@ -359,52 +359,40 @@ def load_samples(samples_path: Path) -> Dict:
 
 def generate_events_json(tsv_path: Path, mapped_task_name: str, logger) -> None:
     """
-    若同名 events.json 不存在，则基于任务类型的模板 + tsv 表头生成最小说明。
-    不校正、不修改 tsv；仅描述已有列。templates 以“映射后的任务名”为 key：
-      rest, sep, listening(=piano), pressing, reaching, word(若启用)
+    If a same-named events.json does not exist, generate a minimal description based on the task type template.
+    Does not read or depend on the TSV header; does not correct or modify the TSV.
+    Templates use the "mapped task name" as the key:
+      rest, sep, listening(=piano), pressing, reaching, word (if enabled)
     """
-    if not tsv_path.exists():
-        logger.warning(f"[events.json] TSV not found, skip: {tsv_path}")
-        return
-
+    # Target json path (still inferred by _events.tsv naming convention)
     json_path = tsv_path.with_name(tsv_path.name.replace("_events.tsv", "_events.json"))
+
+    # Skip if already exists
     if json_path.exists():
         logger.info(f"[events.json] already exists, skip: {json_path}")
         return
 
-
-    try:
-        with tsv_path.open("r", encoding="utf-8") as f:
-            reader = csv.reader(f, delimiter="\t")
-            header = next(reader, [])
-    except Exception as e:
-        logger.error(f"[events.json] failed reading header from {tsv_path}: {e}")
-        return
-    if not header:
-        logger.warning(f"[events.json] empty header in {tsv_path}, skip.")
-        return
-
-
-
-
-    # 归一化任务名（确保使用映射后的名）
+    # Normalize task name (ensure mapped name is used)
     key = (mapped_task_name or "").lower()
-    tmpl = config.templates.get(key, None)
 
-    # 根据 header 生成 JSON：优先模板里对应列；其余列给通用描述
-    out = {}
-    if tmpl:
-        for col, meta in tmpl.items():
-            if col in header:
-                out[col] = meta
-    # 对 header 中模板未覆盖的列，补通用描述
-    for col in header:
-        if col not in out:
-            out[col] = {"Description": f"Column '{col}' from events.tsv."}
+    # Get template from config; generate entirely from template
+    tmpl = config.templates.get(key)
 
-    # 可选的推荐键
-    out["StimulusPresentation"] = {"OperatingSystem": "n/a", "SoftwareName": "n/a"}
+    if not tmpl:
+        logger.warning(f"[events.json] no template found for task '{key}', writing minimal stub: {json_path}")
+        out = {}
+    else:
+        # If template is mutable, copy it to avoid external contamination
+        try:
+            import copy
+            out = copy.deepcopy(tmpl)
+        except Exception:
+            out = dict(tmpl)
 
+    # Optional recommended key (keep)
+    out.setdefault("StimulusPresentation", {"OperatingSystem": "n/a", "SoftwareName": "n/a"})
+
+    # Write file
     try:
         with json_path.open("w", encoding="utf-8") as jf:
             json.dump(out, jf, indent=4, ensure_ascii=False)
@@ -426,9 +414,9 @@ def create_ieeg_json_file(
     institution_name: str = "Osaka University Graduate School of Medicine",
     institutional_department_name: str = "n/a",
     institution_address: str = "n/a",
-    # —— 仅 ECoG 有效；其它固定 0 ——
-    misc_channel_count_default: int = 0,  # 仅在无法从 channel_names 判断 TR 时作为兜底
-    # —— 记录与硬件 ——
+    # —— Only valid for ECoG; others fixed at 0 —__
+    misc_channel_count_default: int = 0,  # Used only as fallback if TR cannot be determined from channel_names
+    # —— Recording and hardware —__
     recording_type: str = "continuous",
     software_versions: str = "Unknown",
     ieeg_placement_scheme: str = "",
@@ -441,7 +429,7 @@ def create_ieeg_json_file(
     ieeg_ground: str = "Upper back",
     electrical_stimulation: bool = False,
     electrical_stimulation_parameters: str = "n/a",
-    # —— 推荐键最小补全清单 ——
+    # —— Minimal recommended keys —__
     device_serial_number: str = "n/a",
     epoch_length: str = "n/a",
     ieeg_electrode_groups: str = "n/a",
@@ -449,7 +437,7 @@ def create_ieeg_json_file(
     cog_atlas_id: str = "n/a",
     cogpo_id: str = "n/a",
 ) -> None:
-    # 采样率与时长
+    # Sampling rate and duration
     sfreq = data_meta.get("sampling_rate", DEFAULT_SAMPLING_FREQUENCY)
     signals = data_meta.get("signals")
     if signals is not None and hasattr(signals, "shape") and signals.shape:
@@ -461,26 +449,26 @@ def create_ieeg_json_file(
     else:
         recording_duration_sec = 0.0
 
-    # —— 通道计数（只依赖你确有的两项 + 名称列表判定 TR）——
+    # —— Channel counts (only rely on two items you actually have + name list for TR detection) —__
     ecog_count = int(data_meta.get("channel_num_signal", 0) or 0)
-    logic_total = int(data_meta.get("channel_num_trigger", 0) or 0)  # 历史命名：这里其实是 “logic 总数”
+    logic_total = int(data_meta.get("channel_num_trigger", 0) or 0)  # Historical naming: this is actually "total logic"
     names = data_meta.get("channel_names") or []
 
-    # 统计 TR 通道
+    # Count TR channels
     try:
         trigger_count = sum(1 for n in names if isinstance(n, str) and n.upper().startswith("TR") and n[2:].isdigit())
     except Exception:
         trigger_count = 0
 
-    # 若没有名称可判定，则退化为 0，并把 logic_total 视作 misc
+    # If no names can be used for detection, fallback to 0 and treat logic_total as misc
     if trigger_count == 0 and not any((isinstance(n, str) and n.upper().startswith("TR")) for n in names):
-        # 没有可识别的 TR 名称
+        # No recognizable TR names
         misc_count = max(logic_total - trigger_count, 0) if logic_total else int(misc_channel_count_default or 0)
     else:
         misc_count = max(logic_total - trigger_count, 0)
 
     ieeg_json_dict = {
-        # 核心任务元数据
+        # Core task metadata
         "TaskName": task_name,
         "TaskDescription": task_description,
         "Instructions": instructions,
@@ -497,7 +485,7 @@ def create_ieeg_json_file(
         "InstitutionalDepartmentName": institutional_department_name,
         "InstitutionAddress": institution_address,
 
-        # —— 推荐键最小补全 ——
+        # —— Minimal recommended keys —__
         "DeviceSerialNumber": device_serial_number,
         "EpochLength": epoch_length,
         "iEEGElectrodeGroups": ieeg_electrode_groups,
@@ -505,7 +493,7 @@ def create_ieeg_json_file(
         "CogAtlasID": cog_atlas_id,
         "CogPOID": cogpo_id,
 
-        # —— 通道计数 ——
+        # —— Channel counts —__
         "ECOGChannelCount": ecog_count,
         "SEEGChannelCount": 0,
         "EEGChannelCount": 0,
@@ -515,7 +503,7 @@ def create_ieeg_json_file(
         "TriggerChannelCount": trigger_count,
         "MiscChannelCount": misc_count,
 
-        # —— 记录属性与电极信息 ——
+        # —— Recording properties and electrode info —__
         "RecordingDuration": recording_duration_sec,
         "RecordingType": recording_type,
         "SoftwareVersions": software_versions,
@@ -816,12 +804,12 @@ def create_coordsystem_json_fallback(sub_id: str,
                                      logger: logging.Logger = None,
                                      space: Optional[str] = None) -> str:
     """
-    为每个 session 生成 sub-<id>_ses-<id>_coordsystem.json（fallback，无坐标）。
-    核心键：
+    Generate sub-<id>_ses-<id>_coordsystem.json (fallback, no coordinates) for each session.
+    Core keys:
       - iEEGCoordinateSystem: "Other"
-      - iEEGCoordinateSystemDescription: 对“无坐标”的说明
+      - iEEGCoordinateSystemDescription: explanation for "no coordinates"
       - iEEGCoordinateUnits: "n/a"
-    若文件已存在则不覆盖。
+    If the file already exists, do not overwrite.
     """
     space_tag = f"_space-{space}" if space else ""
 
@@ -875,14 +863,14 @@ def create_electrodes_tsv(sub_id: str,
                           space: Optional[str] = None
                           ) -> str:
     """
-    生成 electrodes.tsv（可含 x/y/z）。
+    Generate electrodes.tsv (can include x/y/z).
 
-    - 当 ses_id 为 None：输出到被试层级
+    - When ses_id is None: output at subject level
         sub-<id>/ieeg/sub-<id>[_space-<label>]_electrodes.tsv
-    - 当 ses_id 非空：保持原行为（会话层级）
+    - When ses_id is not empty: keep original behavior (session level)
         sub-<id>/ses-<ses>/ieeg/sub-<id>_ses-<ses>[_space-<label>]_electrodes.tsv
 
-    要与同级 coordsystem.json 配套使用（若提供坐标，应在 coordsystem.json 指定坐标系与单位）。
+    Should be used together with the coordsystem.json at the same level (if coordinates are provided, the coordinate system and units should be specified in coordsystem.json).
     """
     bids_root_path = Path(bids_root)
     space_tag = f"_space-{space}" if space else ""
@@ -899,12 +887,12 @@ def create_electrodes_tsv(sub_id: str,
         logger.info(f"[electrodes.tsv] already exists, skip: {out_path}")
         return str(out_path)
 
-    # 归一化坐标/名称
+    # Normalize coordinates/names
     coords_array = None
     name_list = None
 
     if isinstance(coords, dict):
-        # 使用字典的键排序（按名称字母序）
+        # Use sorted keys of the dict (alphabetical order by name)
         name_list = sorted(coords.keys()) if names is None else list(names)
         if names is None:
             coords_array = np.array([coords[nm] if coords.get(nm) is not None else (np.nan, np.nan, np.nan)
@@ -916,27 +904,27 @@ def create_electrodes_tsv(sub_id: str,
         if names is not None:
             name_list = list(names)
         else:
-            # 默认 CH01..CHNN
+            # Default CH01..CHNN
             N = coords_array.shape[0]
             name_list = [f"CH{i:02d}" for i in range(1, N+1)]
     else:
-        # 无坐标：按名称数量生成，全 'n/a'
+        # No coordinates: generate by name count, all 'n/a'
         if names is not None:
             name_list = list(names)
         else:
             name_list = [f"CH{i:02d}" for i in range(1, 33)]
-        coords_array = None  # 用 'n/a' 占位
+        coords_array = None  # Use 'n/a' as placeholder
 
-    # 若传了 names 与 coords，需要长度匹配
+    # If both names and coords are provided, lengths must match
     if coords_array is not None and len(name_list) != coords_array.shape[0]:
         raise ValueError("len(names) must match coords count")
 
-    # 准备表头
+    # Prepare header
     header = ["name", "x", "y", "z", "size", "material", "manufacturer", "group", "hemisphere"]
     if electrode_type is not None:
         header.append("type")
 
-    # 写文件
+    # Write file
     try:
         with out_path.open("w", encoding="utf-8", newline="") as f:
             w = csv.writer(f, delimiter="\t")
@@ -946,7 +934,7 @@ def create_electrodes_tsv(sub_id: str,
                     x = y = z = "n/a"
                 else:
                     xyz = coords_array[idx]
-                    # 允许 NaN -> 'n/a'
+                    # Allow NaN -> 'n/a'
                     x = "n/a" if np.isnan(xyz[0]) else float(xyz[0])
                     y = "n/a" if np.isnan(xyz[1]) else float(xyz[1])
                     z = "n/a" if np.isnan(xyz[2]) else float(xyz[2])
@@ -959,7 +947,7 @@ def create_electrodes_tsv(sub_id: str,
     except Exception as e:
         logger.error(f"[electrodes.tsv] write failed: {e}")
 
-    # 友情提示：请确保同级 coordsystem.json 设置了坐标系与单位（例如 Units: 'mm'）
+    # Friendly reminder: Please ensure the coordsystem.json at the same level sets the coordinate system and units (e.g., Units: 'mm')
     return str(out_path)
 
 def detect_01010101_pattern(trigger_data: np.ndarray, logger: logging.Logger, threshold_count: int = 50) -> bool:
