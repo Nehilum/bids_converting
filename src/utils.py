@@ -475,8 +475,8 @@ def create_ieeg_json_file(
         "SamplingFrequency": sfreq,
         "PowerLineFrequency": power_line_frequency,
         "HardwareFilters": {
-            "HighpassFilter": {"CutoffFrequency": 2.0},
-            "LowpassFilter": {"CutoffFrequency": 325.0},
+            "HighpassFilter": {"CutoffFrequency": DEFAULT_LOW_CUTOFF},
+            "LowpassFilter": {"CutoffFrequency": DEFAULT_HIGH_CUTOFF},
         },
         "SoftwareFilters": software_filters,
         "Manufacturer": manufacturer,
