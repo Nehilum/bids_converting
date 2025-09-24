@@ -11,7 +11,7 @@ import csv
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Tuple, Dict, Any, Optional, Sequence, Union
+from typing import Tuple, Dict, Any, Optional, Sequence, Union, List
 import bids_config as config
 
 import numpy as np
@@ -613,7 +613,7 @@ def unify_channel_data(broken_channels: list,
 
     return unified_channels
 
-def get_default_channel_data() -> Dict[str, Dict[str, Any]]:
+def get_default_channel_data(channel_names: List[str]) -> Dict[str, Dict[str, Any]]:
     """
     Return a dictionary of default channel information.
 
@@ -621,55 +621,52 @@ def get_default_channel_data() -> Dict[str, Dict[str, Any]]:
     - A dictionary with channel names as keys and default channel settings as values.
     """
     default_channels = {}
-    # ECOG channels (CH01 to CH32)
-    for i in range(1, 33):
-        ch_name = f"CH{i:02d}"
-        default_channels[ch_name] = {
-            "name": ch_name,
-            "type": "ECOG",
-            "units": "uV",
-            "low_cutoff": DEFAULT_LOW_CUTOFF,
-            "high_cutoff": DEFAULT_HIGH_CUTOFF,
-            "sampling_frequency": DEFAULT_SAMPLING_FREQUENCY,
-            "group": "n/a",
-            "status": "good",
-        }
-    # EXT channel
-    default_channels["EXT01"] = {
-        "name": "EXT01",
-        "type": "MISC",
-        "units": "n/a",
-        "low_cutoff": "n/a",
-        "high_cutoff": "n/a",
-        "sampling_frequency": DEFAULT_SAMPLING_FREQUENCY,
-        "group": "n/a",
-        "status": "good",
-    }
-    # TR channels (TR01 to TR16)
-    for i in range(1, 17):
-        tr_name = f"TR{i:02d}"
-        default_channels[tr_name] = {
-            "name": tr_name,
-            "type": "MISC",
-            "units": "n/a",
-            "low_cutoff": "n/a",
-            "high_cutoff": "n/a",
-            "sampling_frequency": DEFAULT_SAMPLING_FREQUENCY,
-            "group": "n/a",
-            "status": "good",
-        }
-    # Interpolation mask channel
-    default_channels["Misc_InterpMask"] = {
-        "name": "Misc_InterpMask",
-        "type": "MISC",
-        "units": "binary",
-        "low_cutoff": "n/a",
-        "high_cutoff": "n/a",
-        "sampling_frequency": DEFAULT_SAMPLING_FREQUENCY,
-        "group": "n/a",
-        "status": "good",
-        "status_description": "Interpolation mask channel (1 indicates interpolated sample, 0 indicates original)"
-    }
+    for ch_name in channel_names:
+        if ch_name.startswith("CH"):
+            default_channels[ch_name] = {
+                "name": ch_name,
+                "type": "ECOG",
+                "units": "uV",
+                "low_cutoff": DEFAULT_LOW_CUTOFF,
+                "high_cutoff": DEFAULT_HIGH_CUTOFF,
+                "sampling_frequency": DEFAULT_SAMPLING_FREQUENCY,
+                "group": "n/a",
+                "status": "good",
+            }
+        elif ch_name.startswith("TR"):
+            default_channels[ch_name] = {
+                "name": ch_name,
+                "type": "TRIGGER",
+                "units": "n/a",
+                "low_cutoff": "n/a",
+                "high_cutoff": "n/a",
+                "sampling_frequency": DEFAULT_SAMPLING_FREQUENCY,
+                "group": "n/a",
+                "status": "good",
+            }
+        elif "Misc_InterpMask" in ch_name:
+            default_channels["Misc_InterpMask"] = {
+                "name": "Misc_InterpMask",
+                "type": "MISC",
+                "units": "binary",
+                "low_cutoff": "n/a",
+                "high_cutoff": "n/a",
+                "sampling_frequency": DEFAULT_SAMPLING_FREQUENCY,
+                "group": "n/a",
+                "status": "good",
+                "status_description": "Interpolation mask channel (1 indicates interpolated sample, 0 indicates original)"
+            }
+        else:
+            default_channels[ch_name] = {
+                "name": ch_name,
+                "type": "MISC",
+                "units": "n/a",
+                "low_cutoff": "n/a",
+                "high_cutoff": "n/a",
+                "sampling_frequency": DEFAULT_SAMPLING_FREQUENCY,
+                "group": "n/a",
+                "status": "good",
+            }
     return default_channels
 
 def create_channels_tsv_file(out_tsv_path: str, data_st: dict, measurement_date: datetime,
@@ -684,7 +681,7 @@ def create_channels_tsv_file(out_tsv_path: str, data_st: dict, measurement_date:
     - progressive_channels: Dictionary with progressive channel information.
     """
     # Get the default channel configuration.
-    default_channels = get_default_channel_data()
+    default_channels = get_default_channel_data(data_st["channel_names"])
 
     # Generate unified channel configuration
     unified_channels = unify_channel_data(broken_channels or [],
