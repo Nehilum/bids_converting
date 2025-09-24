@@ -124,9 +124,9 @@ def process_subject(monkey_name: str, data_config: dict, logger: logging.Logger,
     logger.debug(f"Date folders within specified range: {dates_filtered}")
 
     # Create electrodes and coordsystem files if they don't exist
-    create_electrodes_tsv(sub_id=sub_id, ses_id=None, bids_root=str(config.BIDS_DATA_DIR_PATH), logger=logger,
+    create_electrodes_tsv(sub_id=sub_id, ses_id=None, bids_root=str(config.DEFAULT_BIDS_ROOT), logger=logger,
                       material="Pt/Ir", manufacturer="CorTec GmbH", group="n/a", hemisphere="n/a")
-    create_coordsystem_json_fallback(sub_id=sub_id, ses_id=None, bids_root=str(config.BIDS_DATA_DIR_PATH), logger=logger)
+    create_coordsystem_json_fallback(sub_id=sub_id, ses_id=None, bids_root=str(config.DEFAULT_BIDS_ROOT), logger=logger)
 
     # Process each date folder
     for date_str in dates_filtered:
@@ -208,7 +208,7 @@ def process_date(monkey_name: str, sub_id: str, date_str: str, op_day_str: str,
             # Increment the run number for each file processed.
             run_num += 1
             edf_file_name = f"sub-{sub_id}_ses-{ses_id}_task-{mapped_task_name}_run-{run_num:02}_ieeg.edf"
-            edf_file_path = config.BIDS_DATA_DIR_PATH / f"sub-{sub_id}" / f"ses-{ses_id}" / "ieeg" / edf_file_name
+            edf_file_path = config.DEFAULT_BIDS_ROOT / f"sub-{sub_id}" / f"ses-{ses_id}" / "ieeg" / edf_file_name
 
             bin_file_path = config.DATA_DIR_PATH / "CortecData" / monkey_name / date_str / f"{base_file_name}.bin"
 
@@ -233,7 +233,7 @@ def process_date(monkey_name: str, sub_id: str, date_str: str, op_day_str: str,
             events_file_name = f"{base_file_name}_events.tsv"
             events_file_path = config.DATA_DIR_PATH / "Events" / monkey_name / date_str / events_file_name
             bids_events_file_name = f"sub-{sub_id}_ses-{ses_id}_task-{mapped_task_name}_run-{run_num:02}_events.tsv"
-            bids_events_file_path = config.BIDS_DATA_DIR_PATH / f"sub-{sub_id}" / f"ses-{ses_id}" / "ieeg" / bids_events_file_name
+            bids_events_file_path = config.DEFAULT_BIDS_ROOT / f"sub-{sub_id}" / f"ses-{ses_id}" / "ieeg" / bids_events_file_name
             try:
                 shutil.copy(str(events_file_path), str(bids_events_file_path))
             except Exception as e:
@@ -248,7 +248,7 @@ def process_date(monkey_name: str, sub_id: str, date_str: str, op_day_str: str,
 
             # Generate channels.tsv file using unified channel configuration
             bids_channels_file_name = f"sub-{sub_id}_ses-{ses_id}_task-{mapped_task_name}_run-{run_num:02}_channels.tsv"
-            bids_channels_file_path = config.BIDS_DATA_DIR_PATH / f"sub-{sub_id}" / f"ses-{ses_id}" / "ieeg" / bids_channels_file_name
+            bids_channels_file_path = config.DEFAULT_BIDS_ROOT / f"sub-{sub_id}" / f"ses-{ses_id}" / "ieeg" / bids_channels_file_name
             try:
                 create_channels_tsv_file(str(bids_channels_file_path), data_st,
                                            measurement_date=current_date,
@@ -259,7 +259,7 @@ def process_date(monkey_name: str, sub_id: str, date_str: str, op_day_str: str,
 
             # Generate iEEG JSON file
             bids_json_file_name = f"sub-{sub_id}_ses-{ses_id}_task-{mapped_task_name}_run-{run_num:02}_ieeg.json"
-            bids_json_file_path = config.BIDS_DATA_DIR_PATH / f"sub-{sub_id}" / f"ses-{ses_id}" / "ieeg" / bids_json_file_name
+            bids_json_file_path = config.DEFAULT_BIDS_ROOT / f"sub-{sub_id}" / f"ses-{ses_id}" / "ieeg" / bids_json_file_name
             try:
                 create_ieeg_json_file(data_st, str(bids_json_file_path),
                                       task_name=mapped_task_name,
@@ -275,11 +275,11 @@ def process_date(monkey_name: str, sub_id: str, date_str: str, op_day_str: str,
             # Generate impedance TSV file if impedance data exists
             create_impedance_tsv(sub_id, post_op_day, date_str,
                                  str(config.DATA_DIR_PATH / "Impedance" / monkey_name),
-                                 str(config.BIDS_DATA_DIR_PATH), logger)
+                                 str(config.DEFAULT_BIDS_ROOT), logger)
 
     # Generate scans.tsv file for the session if scans_info is not empty
     if scans_info:
-        ses_dir_path = config.BIDS_DATA_DIR_PATH / f"sub-{sub_id}" / f"ses-{ses_id}"
+        ses_dir_path = config.DEFAULT_BIDS_ROOT / f"sub-{sub_id}" / f"ses-{ses_id}"
         if not ses_dir_path.exists():
             ses_dir_path.mkdir(parents=True, exist_ok=True)
         scans_tsv_name = f"sub-{sub_id}_ses-{ses_id}_scans.tsv"

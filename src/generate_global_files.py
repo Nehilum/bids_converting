@@ -3,13 +3,12 @@
 
 import csv
 import json
-import os
 
 from datetime import datetime
 from pathlib import Path
 import bids_config as config
 
-def generate_readme(bids_root: str):
+def generate_readme(bids_root: Path):
     """
     Generate top-level README.
     """
@@ -31,12 +30,11 @@ def generate_readme(bids_root: str):
         "- Maintainer: <your name / email>",
         ""
     ]
-    out = os.path.join(bids_root, "README")
-    with open(out, "w", encoding="utf-8") as f:
-        f.write("\n".join(text))
+    out = bids_root / "README"
+    out.write_text("\n".join(text), encoding="utf-8")
     print(f"[INFO] Generated: {out}")
 
-def generate_changes(bids_root: str):
+def generate_changes(bids_root: Path):
     """
     Generate top-level CHANGES (initialize with one record).
     """
@@ -48,24 +46,25 @@ def generate_changes(bids_root: str):
         "- Added dataset_description.json, participants.tsv/json, README.",
         "- Created /stimuli/ directory (placeholder).",
     ]
-    out = os.path.join(bids_root, "CHANGES")
-    with open(out, "w", encoding="utf-8") as f:
-        f.write("\n".join(text))
+    out = bids_root / "CHANGES"
+    out.write_text("\n".join(text), encoding="utf-8")
     print(f"[INFO] Generated: {out}")
 
-def ensure_stimuli_dir(bids_root: str):
+def ensure_stimuli_dir(bids_root: Path):
     """
     Create /stimuli directory and placeholder note (does not affect validation).
     """
-    stim_dir = os.path.join(bids_root, "stimuli")
-    os.makedirs(stim_dir, exist_ok=True)
-    readme_path = os.path.join(stim_dir, "README.txt")
-    if not os.path.exists(readme_path):
-        with open(readme_path, "w", encoding="utf-8") as f:
-            f.write("Place stimulus files here. Reference via events.tsv 'stim_file' column, paths relative to /stimuli.\n")
+    stim_dir = bids_root / "stimuli"
+    stim_dir.mkdir(parents=True, exist_ok=True)
+    readme_path = stim_dir / "README.txt"
+    if not readme_path.exists():
+        readme_path.write_text(
+            "Place stimulus files here. Reference via events.tsv 'stim_file' column, paths relative to /stimuli.\n",
+            encoding="utf-8",
+        )
     print(f"[INFO] Ensured: {stim_dir}")
 
-def generate_bidsignore(bids_root: str):
+def generate_bidsignore(bids_root: Path):
     """
     Generate .bidsignore (ignore auxiliary directories/files not related to the specification).
     You can append doc/ or temporary output directories as needed.
@@ -76,45 +75,44 @@ def generate_bidsignore(bids_root: str):
         "*.tmp",
         "*.DS_Store",
     ]
-    out = os.path.join(bids_root, ".bidsignore")
-    with open(out, "w", encoding="utf-8") as f:
-        f.write("\n".join(lines) + "\n")
+    out = bids_root / ".bidsignore"
+    out.write_text("\n".join(lines) + "\n", encoding="utf-8")
     print(f"[INFO] Generated: {out}")
 
-def generate_dataset_description(bids_root):
+def generate_dataset_description(bids_root:Path):
     """
     Generate dataset_description.json in the BIDS root directory.
     """
-    out_path = os.path.join(bids_root, "dataset_description.json")
-    with open(out_path, "w", encoding="utf-8") as f:
+    out_path = bids_root / "dataset_description.json"
+    with out_path.open("w", encoding="utf-8") as f:
         json.dump(config.dataset_description, f, indent=4)
     print(f"[INFO] Generated: {out_path}")
 
-def generate_participants_tsv(bids_root):
+def generate_participants_tsv(bids_root: Path):
     """
     Generate participants.tsv in the BIDS root directory.
     If needed, dynamically generate based on actual experimental information, e.g., read from a database or config file.
     """
     # Example data: Assume there are two monkeys
-    out_path = os.path.join(bids_root, "participants.tsv")
-    with open(out_path, "w", newline="", encoding="utf-8") as f:
+    out_path = bids_root / "participants.tsv"
+    with out_path.open("w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f, delimiter="\t")
         for row in config.participants_data:
             writer.writerow(row)
     print(f"[INFO] Generated: {out_path}")
 
-def generate_participants_json(bids_root):
+def generate_participants_json(bids_root: Path):
     """
     Generate participants.json in the BIDS root directory, explaining the meaning of each column in participants.tsv.
     """
-    out_path = os.path.join(bids_root, "participants.json")
-    with open(out_path, "w", encoding="utf-8") as f:
+    out_path = bids_root / "participants.json"
+    with out_path.open("w", encoding="utf-8") as f:
         json.dump(config.participants_json_content, f, indent=4)
     print(f"[INFO] Generated: {out_path}")
 
 def main():
-    bids_root = config.DEFAULT_BIDS_ROOT
-    os.makedirs(bids_root, exist_ok=True)
+    bids_root = Path(config.DEFAULT_BIDS_ROOT)
+    bids_root.mkdir(parents=True, exist_ok=True)
 
     generate_dataset_description(bids_root)
     generate_participants_tsv(bids_root)
