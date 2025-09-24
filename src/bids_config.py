@@ -46,7 +46,7 @@ MONKEY_NAMES = ["Boss", "Carol"]
 TASK_MAPPING_INFO = {
     "association": {
         "use_flag": False,
-        "mapped_name": "pressing",
+        "mapped_name": "association",
         "description": "",
     },
     "association_electric": {
@@ -131,9 +131,9 @@ templates = {
                        "Levels": {"movement_start": "Onset of button press from start-button-referenced parsing",
                                   "movement_done":  "Response button press when there is no start-button reference"}},
         "stim_file":  {"Description": "Task has no external stimulus; set to 'n/a'"},
-        "response_type":{"Description": "Which button was pressed",
-                         "Levels": {"left_button": "Left-hand (or left-side) button",
-                                    "right_button":"Right-hand (or right-side) button"}},
+        "response_type":{"Description": "Which response button was pressed",
+                         "Levels": {"left_button": "Left-side button",
+                                    "right_button":"Right-side button"}},
         "response_time":{"Description": "Latency if defined by paradigm; 'n/a' in current script", "Units": "s"},
     },
     "reaching": {
