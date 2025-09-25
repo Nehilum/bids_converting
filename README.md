@@ -11,13 +11,13 @@
 **bids_converting** is a community-driven Python tool designed to facilitate the conversion of neuroimaging data into the BIDS format. Whether you’re a researcher, developer, or enthusiast, you’re invited to extend, adapt, and apply this project to your needs—all under the permissive MIT License.
 
 [//]: # (TODO: Human to fill in project introduction with your project's actual details and goals.)
-Project Introduction: To convert wireless subdural ECoG recordings from *Macaca fuscata* into the iEEG-BIDS standard. 
+Project Introduction: To convert wireless subdural ECoG recordings from *Macaca fuscata* into the iEEG-BIDS standard.
 
 **What it does**
 - Parses curated session metadata from `Condition/` and task-specific events from `Events/`
 - Converts `CortecData/*.bin` (+ `.hdr`) into BIDS `ieeg/*.edf` with sidecars
-- Auto-generates `channels.tsv`, `events.tsv`, 'electrodes.tsv', 'electrodes.json', 'coordsystem.json', session-level `scans.tsv` 
-- Creates dataset-level files: `dataset_description.json`, `participants.tsv`, `participants.json`, 'README.md', 'CHANGES.md' 
+- Auto-generates `channels.tsv`, `events.tsv`, 'electrodes.tsv', 'electrodes.json', 'coordsystem.json', session-level `scans.tsv`
+- Creates dataset-level files: `dataset_description.json`, `participants.tsv`, `participants.json`, 'README.md', 'CHANGES.md'
 - Handles daily recordings, session/run indexing, and basic interpolation for brief data gaps
 
 ---
@@ -63,8 +63,13 @@ Project Introduction: To convert wireless subdural ECoG recordings from *Macaca 
     ```
 
 ## Usage
+Just run two scripts to generate all.
 
-[TODO: Add usage instructions]
+```
+cd src
+python generate_global_files.py
+python generate_bids.py
+```
 
 ## Open Source & License
 
