@@ -711,89 +711,89 @@ def create_channels_tsv_file(out_tsv_path: str, data_st: dict, measurement_date:
             ])
     logging.info(f"Channels TSV file generated successfully: {out_tsv_path}")
 
-def create_impedance_tsv(sub_id: str, ses_day: int, date_str: str, impedance_source_dir: str,
-                         bids_output_dir: str, logger: logging.Logger) -> None:
+def load_impedance_as_dict(
+    date_str: str,
+    impedance_source_dir: str,
+    logger: logging.Logger
+) -> Dict[str, float]:
     """
-    Generate an impedance TSV file in BIDS format.
-
-    Input:
-      - Impedance files are stored in impedance_source_dir, following the structure:
-            /work/project/ECoG_Monkey/01_Data/Impedance/<MonkeyName>
-      - Impedance file naming format: "YYYYMMDDTHHMMSS.csv" (e.g., "20230718T131216.csv"),
-        with each file containing 32 rows, each corresponding to the impedance value (in uA)
-        for channels CH01 to CH32.
-
-    Output:
-      - In the BIDS output directory under the session folder (e.g., bids_output_dir/sub-<sub_id>/ses-day??),
-        a TSV file is generated with the filename "sub-<sub_id>_ses-day??_impedance.tsv".
-      - The TSV file contains three columns: channel_name, impedance_uA, measurement_time.
-      - If there are multiple impedance files in one day, each file contributes 32 rows with the measurement time.
+    Read the latest impedance CSV for the given date and return a mapping
+    from channel name to impedance value.
+    
+    Behavior:
+      - Looks for files in `impedance_source_dir` whose names start with `date_str`
+        and end with `.csv`, e.g., "20230718T131216.csv".
+      - Sorts the matched files lexicographically and uses the last one
+        as the latest measurement of that day.
+      - Expects exactly 32 rows in the CSV, one per channel CH01..CH32.
+      - Returns a dict: {"CH01": float_value, ..., "CH32": float_value}.
+      - If no valid impedance values are found, returns all channels with NaN.
+    
+    Args:
+        date_str: Date prefix string "YYYYMMDD" used to filter files.
+        impedance_source_dir: Directory containing impedance CSV files.
+        logger: Logger for info/warning/error messages.
+    
+    Returns:
+        Dict[str, float]: Mapping from channel name to impedance value.
     """
     try:
-        # List all CSV files in the impedance_source_dir that start with the given date_str.
         all_files = os.listdir(impedance_source_dir)
     except Exception as e:
         logger.error(f"Failed to list files in {impedance_source_dir}: {e}")
-        return
+        return {f"CH{i+1:02d}": np.nan for i in range(32)}
 
+    # Filter CSVs for the given date prefix
     impedance_files = [
         f for f in all_files
-        if os.path.isfile(os.path.join(impedance_source_dir, f))
-           and f.endswith(".csv")
-           and f.startswith(date_str)
+        if f.endswith(".csv")
+        and f.startswith(date_str)
+        and os.path.isfile(os.path.join(impedance_source_dir, f))
     ]
 
     if not impedance_files:
-        logger.info(f"No impedance files found for date {date_str}; skipping.")
-        return
+        logger.info(f"No impedance files found for date {date_str}.")
+        return {f"CH{i+1:02d}": np.nan for i in range(32)}
 
-    tsv_rows = []
-    # Process each impedance file in sorted order
-    for imp_file in sorted(impedance_files):
-        # Extract measurement time from filename "YYYYMMDDTHHMMSS.csv"
-        base_name = os.path.splitext(imp_file)[0]
-        if 'T' in base_name:
-            # Assume the part after 'T' is the measurement time
-            parts = base_name.split("T")
-            measure_time_str = parts[1] if len(parts) >= 2 else "000000"
-        else:
-            measure_time_str = "000000"
-
-        imp_file_path = os.path.join(impedance_source_dir, imp_file)
-        try:
-            with open(imp_file_path, "r", encoding="utf-8") as fin:
-                reader = csv.reader(fin)
-                imp_values = list(reader)
-            if len(imp_values) != 32:
-                logger.warning(f"{imp_file_path} does not have 32 rows (actual: {len(imp_values)} rows). Skipping.")
-                continue
-            # Generate TSV rows for each channel (CH01 to CH32)
-            for idx, row in enumerate(imp_values):
-                impedance_value = row[0] if row else ""
-                channel_name = f"CH{idx+1:02d}"
-                tsv_rows.append([channel_name, impedance_value, measure_time_str])
-        except Exception as e:
-            logger.error(f"Error processing {imp_file_path}: {e}")
-            continue
-
-    if not tsv_rows:
-        logger.info(f"No valid impedance data loaded for date {date_str}.")
-        return
-
-    # Create output directory: bids_output_dir/sub-<sub_id>/ses-day<ses_day>
-    ses_dir = os.path.join(bids_output_dir, f"sub-{sub_id}", f"ses-day{ses_day:02d}")
-    os.makedirs(ses_dir, exist_ok=True)
-    out_imp_name = f"sub-{sub_id}_ses-day{ses_day:02d}_impedance.tsv"
-    out_imp_path = os.path.join(ses_dir, out_imp_name)
+    # Use the latest file (lexicographically greatest) for the day
+    latest_file = sorted(impedance_files)[-1]
+    latest_path = os.path.join(impedance_source_dir, latest_file)
 
     try:
-        with open(out_imp_path, "w", encoding="utf-8", newline="") as fout:
-            writer = csv.writer(fout, delimiter="\t")
-            writer.writerow(["channel_name", "impedance_uA", "measurement_time"])
-            writer.writerows(tsv_rows)
-        logger.info(f"Impedance TSV file generated successfully: {out_imp_path}")
+        with open(latest_path, "r", encoding="utf-8") as fin:
+            reader = csv.reader(fin)
+            rows = list(reader)
     except Exception as e:
-        logger.error(f"Failed to generate impedance TSV file: {e}")
+        logger.error(f"Error reading {latest_path}: {e}")
+        return {f"CH{i+1:02d}": np.nan for i in range(32)}
+
+    if len(rows) != 32:
+        logger.warning(
+            f"{latest_path} does not have 32 rows (actual: {len(rows)})."
+        )
+        return {f"CH{i+1:02d}": np.nan for i in range(32)}
+
+    impedance: Dict[str, float] = {}
+    for idx, row in enumerate(rows):
+        ch_name = f"CH{idx+1:02d}"
+        if not row:
+            impedance[ch_name] = np.nan
+            continue
+        raw_val = row[0].strip()
+        try:
+            val = float(raw_val)
+        except ValueError:
+            logger.warning(
+                f"{latest_path}: cannot parse impedance '{raw_val}' for {ch_name}; set NaN."
+            )
+            val = np.nan
+        impedance[ch_name] = val
+
+    # If everything is NaN
+    if np.all(np.isnan(list(impedance.values()))):
+        logger.info(f"No valid impedance values parsed from {latest_path}; returning all NaN.")
+
+    return impedance
 
 def create_coordsystem_json_fallback(sub_id: str,
                                      ses_id: Optional[str] = None,
@@ -837,7 +837,8 @@ def create_electrodes_tsv(sub_id: str,
                           ses_id: Optional[str] = None,
                           bids_root: str = ".",
                           logger: Optional[logging.Logger] = None,                          
-                          space: Optional[str] = None
+                          space: Optional[str] = None,
+                          impedance: Optional[Dict[str, float]] = None,
                           ) -> str:
     """
     生成 electrodes.tsv（包含 x/y/z），基于 bids_config.COORDINATE（新结构）：
@@ -880,7 +881,7 @@ def create_electrodes_tsv(sub_id: str,
         logger.warning(f"[electrodes.tsv] bids_config not available or import failed: {e}")
 
     # Prepare header
-    header = ["name", "x", "y", "z", "size", "material", "group", "hemisphere", "type"]
+    header = ["name", "x", "y", "z", "size", "material", "group", "hemisphere", "type", "impedance"]
     rows = []
     if isinstance(config_data, dict) and isinstance(config_data.get("electrodes"), list):
         defaults = config_data.get("defaults", {}) or {}
@@ -919,13 +920,25 @@ def create_electrodes_tsv(sub_id: str,
             y = _num_or_na(y)
             z = _num_or_na(z)
 
-            rows.append([name, x, y, z, size, material, group, hemi, etype])
+            # impedance 来自传入的 impedance dict，否则 'n/a'
+            if impedance and isinstance(impedance, dict) and name in impedance: 
+                try:
+                    imp_val = float(impedance[name])
+                except Exception:
+                    imp_val = "n/a"
+            rows.append([name, x, y, z, size, material, group, hemi, etype,imp_val])
 
     else:
         # 回退逻辑：无 COORDINATE，就写 CH01..CH32，x/y/z 全 'n/a'
         name_list = [f"CH{i:02d}" for i in range(1, 33)]
         for nm in name_list:
-            rows.append([nm, "n/a", "n/a", "n/a", "n/a", "n/a", "n/a", "n/a", "n/a", "n/a"])
+            imp_val = "n/a"
+            if impedance is not None and nm in impedance:
+                try:
+                    imp_val = float(impedance[nm])
+                except Exception:
+                    imp_val = "n/a"
+            rows.append([nm, "n/a", "n/a", "n/a", "n/a", "n/a", "n/a", "n/a", "n/a", "n/a", imp_val])
         logger.info("[electrodes.tsv] COORDINATE not found; wrote fallback CH01..CH32 with 'n/a' coords.")
 
     # 写文件

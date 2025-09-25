@@ -26,12 +26,12 @@ from utils import (
     create_channels_tsv_file,
     get_post_op_day,
     detect_01010101_pattern,
-    create_impedance_tsv,
     generate_events_json,
     load_samples,
     create_electrodes_tsv,
     create_coordsystem_json_fallback,
-    create_electrodes_json
+    create_electrodes_json,
+    load_impedance_as_dict
 )
 
 
@@ -124,10 +124,10 @@ def process_subject(monkey_name: str, data_config: dict, logger: logging.Logger,
     dates_filtered = [d for d in dates_sorted if start_date <= datetime.strptime(d, "%Y%m%d") <= end_date]
     logger.debug(f"Date folders within specified range: {dates_filtered}")
 
-    # Create electrodes and coordsystem files if they don't exist
-    create_electrodes_tsv(sub_id=sub_id, ses_id=None, bids_root=str(config.DEFAULT_BIDS_ROOT), logger=logger)
-    create_coordsystem_json_fallback(sub_id=sub_id, ses_id=None, bids_root=str(config.DEFAULT_BIDS_ROOT), logger=logger)
-    create_electrodes_json(sub_id=sub_id, ses_id=None, bids_root=str(config.DEFAULT_BIDS_ROOT), logger=logger)
+    # # Create electrodes and coordsystem files if they don't exist
+    # create_electrodes_tsv(sub_id=sub_id, ses_id=None, bids_root=str(config.DEFAULT_BIDS_ROOT), logger=logger)
+    # create_coordsystem_json_fallback(sub_id=sub_id, ses_id=None, bids_root=str(config.DEFAULT_BIDS_ROOT), logger=logger)
+    # create_electrodes_json(sub_id=sub_id, ses_id=None, bids_root=str(config.DEFAULT_BIDS_ROOT), logger=logger)
 
     # Process each date folder
     for date_str in dates_filtered:
@@ -167,6 +167,12 @@ def process_date(monkey_name: str, sub_id: str, date_str: str, op_day_str: str,
     if not json_folder_path.is_dir():
         logger.error(f"JSON folder does not exist: {json_folder_path}")
         return
+
+    # generate electrodes and coordsystem files for this session if not exist
+    impedance_dict = load_impedance_as_dict(date_str, str(config.DATA_DIR_PATH / "Impedance" / monkey_name), logger)
+    create_electrodes_tsv(sub_id=sub_id, ses_id=ses_id, bids_root=str(config.DEFAULT_BIDS_ROOT), logger=logger, impedance=impedance_dict)
+    create_coordsystem_json_fallback(sub_id=sub_id, ses_id=ses_id, bids_root=str(config.DEFAULT_BIDS_ROOT), logger=logger)
+    create_electrodes_json(sub_id=sub_id, ses_id=ses_id, bids_root=str(config.DEFAULT_BIDS_ROOT), logger=logger)
 
     json_files = [f for f in json_folder_path.iterdir() if f.is_file() and f.suffix == ".json"]
     task_type_infos = {}
@@ -272,11 +278,6 @@ def process_date(monkey_name: str, sub_id: str, date_str: str, op_day_str: str,
             relative_edf_path = str(Path("ieeg") / edf_file_name).replace("\\", "/")
             acquisition_time_str = exp_start_datetime.isoformat()
             scans_info.append([relative_edf_path, acquisition_time_str])
-
-            # Generate impedance TSV file if impedance data exists
-            create_impedance_tsv(sub_id, post_op_day, date_str,
-                                 str(config.DATA_DIR_PATH / "Impedance" / monkey_name),
-                                 str(config.DEFAULT_BIDS_ROOT), logger)
 
     # Generate scans.tsv file for the session if scans_info is not empty
     if scans_info:
