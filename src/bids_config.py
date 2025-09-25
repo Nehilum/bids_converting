@@ -16,7 +16,7 @@ READMETEXT = [
     "## BIDS Organization",
     "- dataset_description.json",
     "- participants.tsv, participants.json",
-    "- README, CHANGES",
+    "- README.md, CHANGES.md",
     "- sub-<id>/ses-<index>/ieeg/ (with *_ieeg.edf, *_ieeg.json, *_channels.tsv, *_events.tsv, *_scans.tsv, *_electrodes.tsv, *_electrodes.json, *_coordsystem.json)",
     "",
     "## Tasks",
@@ -199,9 +199,9 @@ templates = {
 
 coord_description = {
     "iEEGCoordinateSystem": "Other",
-    "iEEGCoordinateSystemDescription": "Relative 2D sheet-based coordinate system with z=0. Coordinates are derived from the manufacturer's ECoG sheet design drawing (no MRI/CT/intraoperative images available). Each hemisphere has its own sheet: left (CH01–CH16) and right (CH17–CH32). The origin is set at the first channel of each sheet (CH01 for left, CH17 for right). Axes are defined by the sheet geometry, so the left and right sheet coordinate systems are independent, not parallel to each other, and not aligned with anatomical axes. In top-view convention (up=anterior, left=left hemisphere), the sheets are slightly tilted anteriorly. CH01 and CH17 lie most posterior within their respective sheets. Approximate orientation: left sheet ≈ +10° counterclockwise relative to top-view axes; right sheet ≈ −80° clockwise. Increasing x on the left sheet indicates more anterior; increasing y indicates more antero-left. On the right sheet, x values (except the origin) are mostly negative, with more negative indicating more anterior; increasing y indicates more antero-left.",
+    "iEEGCoordinateSystemDescription": "Relative 2D sheet-based coordinate system. The monkeys were implanted with one ECoG electrodes sheet for each hemisphere (left: CH01-CH16; right: CH17-CH32). As no MRI, CT or intraoperative images were available, X and Y coordinates of each electrode were derived from the manufacturer's sheet design drawing, where z coordinates were set to 0. The origin was set at the first channel of each sheet (CH01 and CH17). Notably, because the relative position of the left and right sheets are unavailable, the coordinate systems for the left and right sheets are independent. The sheets were implanted so that CH01 and CH17 lie most posterior within their respective sheets. In essence, an increase in x and y values on the left sheet corresponds to an anterior and antero-left location in the brain, respectively. On the other hand, an increase in x and y values for the right sheet indicates more posterior and antero-left locations, respectively.",
     "iEEGCoordinateUnits": "mm",
-    "iEEGCoordinateProcessingDescription": "Electrode (x,y) positions were computed from the ECoG sheet design (inter-electrode spacing and layout). Because absolute anatomical space was unavailable, z was fixed to 0 for all electrodes. The left and right sheets were handled independently, each with its own origin and coordinate axes. No coregistration with subject MRI/CT or standard space was performed.",
+    "iEEGCoordinateProcessingDescription": "The electrode positions (x, y) were computed from the ECoG sheet design. The left and right sheets were handled independently, each with its own origin and coordinate axes. No coregistration with the subject's MRI/CT or standard space was performed.",
 }
 
 electrodes_description = {
