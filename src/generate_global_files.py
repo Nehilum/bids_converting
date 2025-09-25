@@ -40,11 +40,14 @@ def generate_changes(bids_root: Path):
     """
     today = datetime.today().strftime("%Y-%m-%d")
     text = [
-        "Monkey ECoG Dataset — CHANGES",
+        "Longitudinal Multitask Wireless ECoG Data from Two Fully Implanted Macaca fuscata — CHANGES",
         "",
-        f"{today}: Initial export of raw iEEG dataset in BIDS structure.",
-        "- Added dataset_description.json, participants.tsv/json, README.",
-        "- Created /stimuli/ directory (placeholder).",
+        f"{today}: Initial export of the wireless subdural ECoG (iEEG) dataset from Macaca mulatta monkeys.",
+        "Data curated and exported into BIDS format (iEEG-BIDS specification).",
+        "Included: dataset_description.json, participants.tsv, participants.json, README, CHANGES.",
+        "Provided subject/session-level iEEG data in EDF with metadata (.json), channels (.tsv), events (.tsv), electrodes.tsv, electrodes.json, coordsystem.json, and scans index (.tsv).",
+        "Event files included only for curated and validated runs.",
+        "Created /stimuli/ directory.",
     ]
     out = bids_root / "CHANGES"
     out.write_text("\n".join(text), encoding="utf-8")
@@ -63,21 +66,6 @@ def ensure_stimuli_dir(bids_root: Path):
             encoding="utf-8",
         )
     print(f"[INFO] Ensured: {stim_dir}")
-
-def generate_bidsignore(bids_root: Path):
-    """
-    Generate .bidsignore (ignore auxiliary directories/files not related to the specification).
-    You can append doc/ or temporary output directories as needed.
-    """
-    lines = [
-        "doc/",
-        "*.log",
-        "*.tmp",
-        "*.DS_Store",
-    ]
-    out = bids_root / ".bidsignore"
-    out.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    print(f"[INFO] Generated: {out}")
 
 def generate_dataset_description(bids_root:Path):
     """

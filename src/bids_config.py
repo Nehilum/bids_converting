@@ -1,15 +1,61 @@
 from pathlib import Path
 from typing import Dict, Tuple
 
+text = [
+    "Longitudinal Multitask Wireless ECoG Data from Two Fully Implanted Macaca fuscata — README",
+    "",
+    "## Overview",
+    "This repository contains a wireless subdural ECoG (iEEG) dataset from *Macaca mulatta* monkeys,",
+    "organized in compliance with the iEEG-BIDS specification.",
+    "Recordings were acquired daily using a wireless, inductively powered implant;",
+    "data are curated and exported into BIDS to support reproducible neuroscience.",
+    "",
+    "Keywords: wireless subdural ECoG, iEEG, Macaca mulatta, BIDS-compliant dataset,",
+    "longitudinal recordings, task-based neurophysiology",
+    "",
+    "## BIDS Organization",
+    "- dataset_description.json",
+    "- participants.tsv, participants.json",
+    "- README, CHANGES",
+    "- sub-<id>/ses-<index>/ieeg/ (with *_ieeg.edf, *_ieeg.json, *_channels.tsv, *_events.tsv, *_scans.tsv, *_electrodes.tsv, *_electrodes.json, *_coordsystem.json)",
+    "",
+    "## Tasks",
+    "Tasks include rest, pressing, reaching, listening, sep.",
+    "Only curated and validated tasks are exported.",
+    "",
+    "## Signals and Channels",
+    "- Uniform sampling rate per file.",
+    "- channels.tsv lists physiological (ECoG), trigger (TRIGGER) and auxiliary channels (MISC).",
+    "",
+    "## Usage",
+    "This dataset can be loaded with BIDS-compatible toolboxes such as MNE-Python, FieldTrip, or EEGLAB.",
+    "Inspect *_events.tsv for task timing and *_channels.tsv for channel information.",
+    "",
+    "## Participants",
+    "Each subject corresponds to an individual monkey (e.g., sub-monkeyb, sub-monkeyc).",
+    "",
+    "## Ethics",
+    "All animal procedures complied with Japanese laws and institutional regulations, including the Science Council of Japan Guidelines for Proper Conduct of Animal Experiments and national standards on pain relief and euthanasia, and were approved by the Animal Experiment Committee — The University of Osaka (approval FBS-25-002). ",
+    "",
+    "## License and Citation",
+    "License: CC BY 4.0",
+    "Citation: [Authors], “[Dataset Title],” [Repository/DOI], [Year].",
+    "",
+    "## Contact",
+    "Maintainer: Huixiang Yang, The University of Osaka, yanghuixiang@bci.med.osaka-u.ac.jp",
+    "For issues, please use the repository issue tracker."
+]
+
 dataset_description = {
-    "Name": "Monkey ECoG Dataset",
+    "Name": "Longitudinal Multitask Wireless ECoG Data from Two Fully Implanted Macaca fuscata",
     "BIDSVersion": "1.7.0",
     "DatasetType": "raw",
-    "License": " CC BY 4.0",
     "Authors": ["Huixiang Yang", "Ryohei Fukuma", "Kotaro Okuda", "Takufumi Yanagisawa"],
-    "HowToAcknowledge": "Please cite XXX if you use these data",
+    "HowToAcknowledge": "Please cite our Scientific Data article once available. Provisional citation: []",
     "Funding": ["Grant JPMJER1801 from JST, JPMJMS2012 (TY) from Moonshot R&D, JPMJCR18A5 (TY) from CREST, JPMJCR24U2 (TY) from AIP"],
-    "ReferencesAndLinks": ["https://example.com/project_page"]
+    "ReferencesAndLinks": [""],
+    "DatasetDOI": "",
+    "License": " CC BY 4.0",
 }
 participants_data = [
     ["participant_id", "species", "sex", "age"],      # table header
@@ -153,11 +199,9 @@ templates = {
 
 coord_description = {
     "iEEGCoordinateSystem": "Other",
-    "iEEGCoordinateSystemDescription": (
-        "No spatial electrode coordinates are provided at this stage. "
-        "Electrodes are listed in electrodes.tsv with non-spatial attributes only."
-    ),
-    "iEEGCoordinateUnits": "n/a"
+    "iEEGCoordinateSystemDescription": "Relative 2D sheet-based coordinate system with z=0. Coordinates are derived from the manufacturer's ECoG sheet design drawing (no MRI/CT/intraoperative images available). Each hemisphere has its own sheet: left (CH01–CH16) and right (CH17–CH32). The origin is set at the first channel of each sheet (CH01 for left, CH17 for right). Axes are defined by the sheet geometry, so the left and right sheet coordinate systems are independent, not parallel to each other, and not aligned with anatomical axes. In top-view convention (up=anterior, left=left hemisphere), the sheets are slightly tilted anteriorly. CH01 and CH17 lie most posterior within their respective sheets. Approximate orientation: left sheet ≈ +10° counterclockwise relative to top-view axes; right sheet ≈ −80° clockwise. Increasing x on the left sheet indicates more anterior; increasing y indicates more antero-left. On the right sheet, x values (except the origin) are mostly negative, with more negative indicating more anterior; increasing y indicates more antero-left.",
+    "iEEGCoordinateUnits": "mm",
+    "iEEGCoordinateProcessingDescription": "Electrode (x,y) positions were computed from the ECoG sheet design (inter-electrode spacing and layout). Because absolute anatomical space was unavailable, z was fixed to 0 for all electrodes. The left and right sheets were handled independently, each with its own origin and coordinate axes. No coregistration with subject MRI/CT or standard space was performed.",
 }
 
 electrodes_description = {

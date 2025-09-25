@@ -34,7 +34,6 @@ from utils import (
     load_impedance_as_dict
 )
 
-
 def main():
     """
     Main function: Process data for each subject and convert to BIDS format.
