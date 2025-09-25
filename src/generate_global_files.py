@@ -12,26 +12,8 @@ def generate_readme(bids_root: Path):
     """
     Generate top-level README.
     """
-    text = [
-        "# Monkey ECoG Dataset",
-        "",
-        "This dataset follows the BIDS specification (iEEG-BIDS).",
-        "",
-        "## Contents",
-        "- Raw iEEG recordings in sub-*/ses-*/ieeg/",
-        "- Per-run events.tsv (+ events.json when available)",
-        "- Global files: dataset_description.json, participants.tsv/json, CHANGES, README",
-        "",
-        "## Notes",
-        "- Times in events.tsv are in seconds relative to run start.",
-        "- Stimuli (if any) should live under /stimuli and be referenced via the `stim_file` column.",
-        "",
-        "## Contacts",
-        "- Maintainer: <your name / email>",
-        ""
-    ]
-    out = bids_root / "README"
-    out.write_text("\n".join(text), encoding="utf-8")
+    out = bids_root / "README.md"
+    out.write_text("\n".join(config.READMETEXT), encoding="utf-8")
     print(f"[INFO] Generated: {out}")
 
 def generate_changes(bids_root: Path):
@@ -49,7 +31,7 @@ def generate_changes(bids_root: Path):
         "Event files included only for curated and validated runs.",
         "Created /stimuli/ directory.",
     ]
-    out = bids_root / "CHANGES"
+    out = bids_root / "CHANGES.md"
     out.write_text("\n".join(text), encoding="utf-8")
     print(f"[INFO] Generated: {out}")
 
@@ -110,7 +92,6 @@ def main():
     generate_readme(bids_root)
     generate_changes(bids_root)
     ensure_stimuli_dir(bids_root)
-    generate_bidsignore(bids_root)
     print("[INFO] All files generated successfully.")
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Dict, Tuple
 
-text = [
+READMETEXT = [
     "Longitudinal Multitask Wireless ECoG Data from Two Fully Implanted Macaca fuscata — README",
     "",
     "## Overview",
