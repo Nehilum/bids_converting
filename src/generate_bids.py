@@ -48,7 +48,6 @@ def main():
                     help="Path to samples.json. If set, export only listed subject/post_op_day/tasks.")
     args = ap.parse_args()
 
-
     # Load configuration file
     try:
         with open(config.DATA_CONFIG_FILE_PATH, "r", encoding="utf-8") as f:
@@ -61,10 +60,6 @@ def main():
     samples_filter = {}
     if args.samples:
         samples_filter = load_samples(Path(args.samples))
-    else:
-        # Also support "enable if default path exists" lazy loading
-        if config.SAMPLES_FILE_DEFAULT.exists():
-            samples_filter = load_samples(config.SAMPLES_FILE_DEFAULT)
     if samples_filter:
         logger.info(f"Samples filtering enabled: {samples_filter}")
     else:
