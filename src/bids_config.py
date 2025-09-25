@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Dict, Tuple
 
 dataset_description = {
     "Name": "Monkey ECoG Dataset",
@@ -148,6 +149,101 @@ templates = {
                                     "right_hand":"Right hand reach"}},
         "response_time":{"Description": "Latency if defined by paradigm; 'n/a' in current script", "Units": "s"},
     },
+}
+
+coord_description = {
+    "iEEGCoordinateSystem": "Other",
+    "iEEGCoordinateSystemDescription": (
+        "No spatial electrode coordinates are provided at this stage. "
+        "Electrodes are listed in electrodes.tsv with non-spatial attributes only."
+    ),
+    "iEEGCoordinateUnits": "n/a"
+}
+
+electrodes_description = {
+        "x": {
+            "Description": "Electrode x-coordinate in the coordinate system defined in coordsystem.json",
+            "Units": "mm"
+        },
+        "y": {
+            "Description": "Electrode y-coordinate in the coordinate system defined in coordsystem.json",
+            "Units": "mm"
+        },
+        "z": {
+            "Description": "Electrode z-coordinate in the coordinate system defined in coordsystem.json",
+            "Units": "mm"
+        },
+        "size": {
+            "Description": "Electrode contact diameter (or characteristic size)",
+            "Units": "mm"
+        },
+        "material": {
+            "Description": "Electrode contact material (e.g., Pt/Ir 90/10)"
+        },
+        "type": {
+            "Description": "Electrode type (e.g., ECoG, SEEG, EEG). "
+                           "Note: official BIDS requires type in channels.tsv; "
+                           "here we keep it as an extra column for clarity."
+        },
+        "group": {
+            "Description": "Electrode group/array label (e.g., Left_Sheet, Right_Sheet, Left_Ref, Right_Ref)"
+        },
+        "hemisphere": {
+            "Description": "Hemisphere label",
+            "Levels": {
+                "L": "Left hemisphere",
+                "R": "Right hemisphere"
+            }
+        }
+    }
+
+COORDINATE = {
+  "defaults": {
+    "size": 2.0,
+    "material": "Pt/Ir 90/10",
+    "type": "ECoG"
+  },
+  "group_defaults": {
+    "Left_Sheet": { "hemisphere": "L" },
+    "Right_Sheet": { "hemisphere": "R" },
+    "Left_Ref": { "hemisphere": "L" },
+    "Right_Ref": { "hemisphere": "R" }
+  },
+  "electrodes": [
+    {"name":"CH01","x":0.0,"y":0.0,"z":0.0,"group":"Left_Sheet"},
+    {"name":"CH02","x":0.0,"y":7.0,"z":0.0,"group":"Left_Sheet"},
+    {"name":"CH03","x":0.0,"y":14.0,"z":0.0,"group":"Left_Sheet"},
+    {"name":"CH04","x":0.0,"y":21.0,"z":0.0,"group":"Left_Sheet"},
+    {"name":"CH05","x":5.0,"y":1.5,"z":0.0,"group":"Left_Sheet"},
+    {"name":"CH06","x":5.0,"y":6.5,"z":0.0,"group":"Left_Sheet"},
+    {"name":"CH07","x":5.0,"y":11.5,"z":0.0,"group":"Left_Sheet"},
+    {"name":"CH08","x":5.0,"y":16.5,"z":0.0,"group":"Left_Sheet"},
+    {"name":"CH09","x":5.0,"y":23.5,"z":0.0,"group":"Left_Sheet"},
+    {"name":"CH10","x":5.0,"y":30.5,"z":0.0,"group":"Left_Sheet"},
+    {"name":"CH11","x":0.5,"y":25.0,"z":0.0,"group":"Left_Ref"},
+    {"name":"CH12","x":10.0,"y":3.0,"z":0.0,"group":"Left_Sheet"},
+    {"name":"CH13","x":10.0,"y":8.0,"z":0.0,"group":"Left_Sheet"},
+    {"name":"CH14","x":10.0,"y":13.0,"z":0.0,"group":"Left_Sheet"},
+    {"name":"CH15","x":10.0,"y":18.0,"z":0.0,"group":"Left_Sheet"},
+    {"name":"CH16","x":10.0,"y":25.0,"z":0.0,"group":"Left_Sheet"},
+
+    {"name":"CH17","x":0.0,"y":0.0,"z":0.0,"group":"Right_Sheet"},
+    {"name":"CH18","x":0.0,"y":7.0,"z":0.0,"group":"Right_Sheet"},
+    {"name":"CH19","x":0.0,"y":14.0,"z":0.0,"group":"Right_Sheet"},
+    {"name":"CH20","x":0.0,"y":21.0,"z":0.0,"group":"Right_Sheet"},
+    {"name":"CH21","x":-5.0,"y":1.5,"z":0.0,"group":"Right_Sheet"},
+    {"name":"CH22","x":-5.0,"y":6.5,"z":0.0,"group":"Right_Sheet"},
+    {"name":"CH23","x":-5.0,"y":11.5,"z":0.0,"group":"Right_Sheet"},
+    {"name":"CH24","x":-5.0,"y":16.5,"z":0.0,"group":"Right_Sheet"},
+    {"name":"CH25","x":-5.0,"y":23.5,"z":0.0,"group":"Right_Sheet"},
+    {"name":"CH26","x":-5.0,"y":30.5,"z":0.0,"group":"Right_Sheet"},
+    {"name":"CH27","x":-0.5,"y":25.0,"z":0.0,"group":"Right_Ref"},
+    {"name":"CH28","x":-10.0,"y":3.0,"z":0.0,"group":"Right_Sheet"},
+    {"name":"CH29","x":-10.0,"y":8.0,"z":0.0,"group":"Right_Sheet"},
+    {"name":"CH30","x":-10.0,"y":13.0,"z":0.0,"group":"Right_Sheet"},
+    {"name":"CH31","x":-10.0,"y":18.0,"z":0.0,"group":"Right_Sheet"},
+    {"name":"CH32","x":-10.0,"y":25.0,"z":0.0,"group":"Right_Sheet"}
+  ]
 }
 
 # Data and output directories

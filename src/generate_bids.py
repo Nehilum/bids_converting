@@ -30,7 +30,8 @@ from utils import (
     generate_events_json,
     load_samples,
     create_electrodes_tsv,
-    create_coordsystem_json_fallback
+    create_coordsystem_json_fallback,
+    create_electrodes_json
 )
 
 
@@ -124,9 +125,9 @@ def process_subject(monkey_name: str, data_config: dict, logger: logging.Logger,
     logger.debug(f"Date folders within specified range: {dates_filtered}")
 
     # Create electrodes and coordsystem files if they don't exist
-    create_electrodes_tsv(sub_id=sub_id, ses_id=None, bids_root=str(config.DEFAULT_BIDS_ROOT), logger=logger,
-                      material="Pt/Ir", manufacturer="CorTec GmbH", group="n/a", hemisphere="n/a")
+    create_electrodes_tsv(sub_id=sub_id, ses_id=None, bids_root=str(config.DEFAULT_BIDS_ROOT), logger=logger)
     create_coordsystem_json_fallback(sub_id=sub_id, ses_id=None, bids_root=str(config.DEFAULT_BIDS_ROOT), logger=logger)
+    create_electrodes_json(sub_id=sub_id, ses_id=None, bids_root=str(config.DEFAULT_BIDS_ROOT), logger=logger)
 
     # Process each date folder
     for date_str in dates_filtered:

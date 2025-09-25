@@ -818,25 +818,15 @@ def create_coordsystem_json_fallback(sub_id: str,
         out_name = f"sub-{sub_id}_ses-{ses_id}{space_tag}_coordsystem.json"
 
     os.makedirs(ieeg_dir, exist_ok=True)
-    out_name = f"sub-{sub_id}_ses-{ses_id}_coordsystem.json"
     out_path = os.path.join(ieeg_dir, out_name)
 
     if os.path.exists(out_path):
         logger.info(f"[coordsystem.json] already exists, skip: {out_path}")
         return out_path
 
-    payload = {
-        "iEEGCoordinateSystem": "Other",
-        "iEEGCoordinateSystemDescription": (
-            "No spatial electrode coordinates are provided at this stage. "
-            "Electrodes are listed in electrodes.tsv with non-spatial attributes only."
-        ),
-        "iEEGCoordinateUnits": "n/a"
-    }
-
     try:
         with open(out_path, "w", encoding="utf-8") as f:
-            json.dump(payload, f, indent=4, ensure_ascii=False)
+            json.dump(config.coord_description, f, indent=4, ensure_ascii=False)
         logger.info(f"[coordsystem.json] generated: {out_path}")
     except Exception as e:
         logger.error(f"[coordsystem.json] write failed: {e}")
@@ -846,28 +836,26 @@ def create_coordsystem_json_fallback(sub_id: str,
 def create_electrodes_tsv(sub_id: str,
                           ses_id: Optional[str] = None,
                           bids_root: str = ".",
-                          logger: Optional[logging.Logger] = None,
-                          coords: Optional[Union[Sequence[Sequence[float]],
-                                                 np.ndarray,
-                                                 Dict[str, Tuple[float, float, float]]]] = None,
-                          names: Optional[Sequence[str]] = None,
-                          size: Union[str, float] = "n/a",
-                          material: str = "n/a",
-                          manufacturer: str = "n/a",
-                          group: str = "n/a",
-                          hemisphere: str = "n/a",
-                          electrode_type: Optional[str] = "ECOG",
+                          logger: Optional[logging.Logger] = None,                          
                           space: Optional[str] = None
                           ) -> str:
     """
-    Generate electrodes.tsv (can include x/y/z).
+    生成 electrodes.tsv（包含 x/y/z），基于 bids_config.COORDINATE（新结构）：
+      COORDINATE = {
+        "defaults": {"size": 2.0, "material": "Pt/Ir 90/10", "type": "ECoG", ...可选manufacturer},
+        "group_defaults": {"Left_Sheet": {"hemisphere": "L"}, ...},
+        "electrodes": [{"name":"CH01","x":0.0,"y":0.0,"z":0.0,"group":"Left_Sheet"}, ...]
+      }
 
-    - When ses_id is None: output at subject level
+    若 bids_config.COORDINATE 不存在，则回退为：
+      name_list = CH01..CH32，x/y/z 均为 "n/a"。
+
+    - ses_id 为 None 时输出到 subject 层级:
         sub-<id>/ieeg/sub-<id>[_space-<label>]_electrodes.tsv
-    - When ses_id is not empty: keep original behavior (session level)
+    - ses_id 不为空时输出到 session 层级:
         sub-<id>/ses-<ses>/ieeg/sub-<id>_ses-<ses>[_space-<label>]_electrodes.tsv
 
-    Should be used together with the coordsystem.json at the same level (if coordinates are provided, the coordinate system and units should be specified in coordsystem.json).
+    注意：请确保同级目录下提供 coordsystem.json 以声明坐标系与单位。
     """
     bids_root_path = Path(bids_root)
     space_tag = f"_space-{space}" if space else ""
@@ -884,68 +872,108 @@ def create_electrodes_tsv(sub_id: str,
         logger.info(f"[electrodes.tsv] already exists, skip: {out_path}")
         return str(out_path)
 
-    # Normalize coordinates/names
-    coords_array = None
-    name_list = None
-
-    if isinstance(coords, dict):
-        # Use sorted keys of the dict (alphabetical order by name)
-        name_list = sorted(coords.keys()) if names is None else list(names)
-        if names is None:
-            coords_array = np.array([coords[nm] if coords.get(nm) is not None else (np.nan, np.nan, np.nan)
-                                     for nm in name_list], dtype=float)
-    elif coords is not None:
-        coords_array = np.array(coords, dtype=float)
-        if coords_array.ndim != 2 or coords_array.shape[1] != 3:
-            raise ValueError("coords must be (N,3) array-like or dict[name]->(x,y,z)")
-        if names is not None:
-            name_list = list(names)
-        else:
-            # Default CH01..CHNN
-            N = coords_array.shape[0]
-            name_list = [f"CH{i:02d}" for i in range(1, N+1)]
-    else:
-        # No coordinates: generate by name count, all 'n/a'
-        if names is not None:
-            name_list = list(names)
-        else:
-            name_list = [f"CH{i:02d}" for i in range(1, 33)]
-        coords_array = None  # Use 'n/a' as placeholder
-
-    # If both names and coords are provided, lengths must match
-    if coords_array is not None and len(name_list) != coords_array.shape[0]:
-        raise ValueError("len(names) must match coords count")
+    # 尝试读取 bids_config.COORDINATE（新结构）
+    config_data = None
+    try:
+        config_data = getattr(config, "COORDINATE", None)
+    except Exception as e:
+        logger.warning(f"[electrodes.tsv] bids_config not available or import failed: {e}")
 
     # Prepare header
-    header = ["name", "x", "y", "z", "size", "material", "manufacturer", "group", "hemisphere"]
-    if electrode_type is not None:
-        header.append("type")
+    header = ["name", "x", "y", "z", "size", "material", "group", "hemisphere", "type"]
+    rows = []
+    if isinstance(config_data, dict) and isinstance(config_data.get("electrodes"), list):
+        defaults = config_data.get("defaults", {}) or {}
+        group_defaults = config_data.get("group_defaults", {}) or {}
 
-    # Write file
+        default_size = defaults.get("size", "n/a")
+        default_material = defaults.get("material", "n/a")
+        default_type = defaults.get("type", "n/a")
+
+        for ele in config_data["electrodes"]:
+            name = ele.get("name", "n/a")
+            # 坐标允许缺失则写 'n/a'
+            x = ele.get("x", "n/a")
+            y = ele.get("y", "n/a")
+            z = ele.get("z", "n/a")
+            group = ele.get("group", "n/a")
+
+            # hemisphere 来自 group_defaults[group].hemisphere，否则 'n/a'
+            hemi = "n/a"
+            if group in group_defaults:
+                hemi = group_defaults[group].get("hemisphere", "n/a")
+
+            # 可允许电极级别覆盖（若你后续扩展在 electrode 上直接提供 size/material/type/manufacturer）
+            size = ele.get("size", default_size)
+            material = ele.get("material", default_material)
+            etype = ele.get("type", default_type)
+
+            # 保证数字型坐标被正常写出（否则为 'n/a'）
+            def _num_or_na(v):
+                try:
+                    return float(v)
+                except Exception:
+                    return "n/a"
+
+            x = _num_or_na(x)
+            y = _num_or_na(y)
+            z = _num_or_na(z)
+
+            rows.append([name, x, y, z, size, material, group, hemi, etype])
+
+    else:
+        # 回退逻辑：无 COORDINATE，就写 CH01..CH32，x/y/z 全 'n/a'
+        name_list = [f"CH{i:02d}" for i in range(1, 33)]
+        for nm in name_list:
+            rows.append([nm, "n/a", "n/a", "n/a", "n/a", "n/a", "n/a", "n/a", "n/a", "n/a"])
+        logger.info("[electrodes.tsv] COORDINATE not found; wrote fallback CH01..CH32 with 'n/a' coords.")
+
+    # 写文件
     try:
         with out_path.open("w", encoding="utf-8", newline="") as f:
             w = csv.writer(f, delimiter="\t")
             w.writerow(header)
-            for idx, nm in enumerate(name_list):
-                if coords_array is None:
-                    x = y = z = "n/a"
-                else:
-                    xyz = coords_array[idx]
-                    # Allow NaN -> 'n/a'
-                    x = "n/a" if np.isnan(xyz[0]) else float(xyz[0])
-                    y = "n/a" if np.isnan(xyz[1]) else float(xyz[1])
-                    z = "n/a" if np.isnan(xyz[2]) else float(xyz[2])
-
-                row = [nm, x, y, z, size, material, manufacturer, group, hemisphere]
-                if electrode_type is not None:
-                    row.append(electrode_type)
-                w.writerow(row)
+            w.writerows(rows)
         logger.info(f"[electrodes.tsv] generated: {out_path}")
     except Exception as e:
         logger.error(f"[electrodes.tsv] write failed: {e}")
 
     # Friendly reminder: Please ensure the coordsystem.json at the same level sets the coordinate system and units (e.g., Units: 'mm')
     return str(out_path)
+
+def create_electrodes_json(sub_id: str,
+                            ses_id: Optional[str] = None,
+                            bids_root: str = ".",
+                            logger: logging.Logger = None,
+                            space: Optional[str] = None) -> str:
+    """
+    Generate sub-<id>_ses-<id>_electrodes.json for each sub-<id>_ses-<id>_electrodes.tsv.
+    If the file already exists, do not overwrite.
+    """
+    space_tag = f"_space-{space}" if space else ""
+
+    if ses_id is None:
+        ieeg_dir = os.path.join(bids_root, f"sub-{sub_id}", "ieeg")
+        out_name = f"sub-{sub_id}{space_tag}_electrodes.json"
+    else:
+        ieeg_dir = os.path.join(bids_root, f"sub-{sub_id}", f"ses-{ses_id}", "ieeg")
+        out_name = f"sub-{sub_id}_ses-{ses_id}{space_tag}_electrodes.json"
+
+    os.makedirs(ieeg_dir, exist_ok=True)
+    out_path = os.path.join(ieeg_dir, out_name)
+
+    if os.path.exists(out_path):
+        logger.info(f"[electrodes.json] already exists, skip: {out_path}")
+        return out_path
+
+    try:
+        with open(out_path, "w", encoding="utf-8") as f:
+            json.dump(config.electrodes_description, f, indent=4, ensure_ascii=False)
+        logger.info(f"[electrodes.json] generated: {out_path}")
+    except Exception as e:
+        logger.error(f"[electrodes.json] write failed: {e}")
+
+    return out_path
 
 def detect_01010101_pattern(trigger_data: np.ndarray, logger: logging.Logger, threshold_count: int = 50) -> bool:
     """
