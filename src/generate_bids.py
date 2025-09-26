@@ -31,7 +31,9 @@ from utils import (
     create_electrodes_tsv,
     create_coordsystem_json_fallback,
     create_electrodes_json,
-    load_impedance_as_dict
+    load_impedance_as_dict,
+    init_subject_qc_table,
+    generate_qc_row
 )
 
 def main():
@@ -118,13 +120,15 @@ def process_subject(monkey_name: str, data_config: dict, logger: logging.Logger,
     dates_filtered = [d for d in dates_sorted if start_date <= datetime.strptime(d, "%Y%m%d") <= end_date]
     logger.debug(f"Date folders within specified range: {dates_filtered}")
 
+    
+    qc_tsv_path = init_subject_qc_table(config.DEFAULT_BIDS_ROOT, sub_id)
     # Process each date folder
     for date_str in dates_filtered:
-        process_date(monkey_name, sub_id, date_str, op_day_str,
+        process_date(monkey_name, sub_id, date_str, op_day_str, qc_tsv_path,
              broken_ch_list, progressive_channels, logger,
              samples_filter.get(monkey_name, {}))
 
-def process_date(monkey_name: str, sub_id: str, date_str: str, op_day_str: str,
+def process_date(monkey_name: str, sub_id: str, date_str: str, op_day_str: str, qc_tsv_path: Path,
                  broken_ch_list: list, progressive_channels: dict, logger: logging.Logger,
                  subj_samples: Dict[int, Dict]) -> None:
     """
@@ -224,6 +228,8 @@ def process_date(monkey_name: str, sub_id: str, date_str: str, op_day_str: str,
             except Exception as e:
                 logger.error(f"Error processing {bin_file_path}: {e}")
                 continue
+            # Generate QC entry for this run
+            generate_qc_row(qc_tsv_path, data_st, sub_id, ses_id, mapped_task_name, run_num)
 
             # Copy events file
             events_file_name = f"{base_file_name}_events.tsv"

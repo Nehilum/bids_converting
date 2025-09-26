@@ -64,6 +64,70 @@ def setup_logging(info_log: str = "process.log", error_log: str = "error.log") -
 # Ignore warnings from pyedflib
 warnings.filterwarnings('ignore')
 
+
+def init_subject_qc_table(bids_root, sub_id):
+    qc_dir = Path(bids_root) / "derivatives" / "qc"
+    qc_dir.mkdir(parents=True, exist_ok=True)
+
+    qc_tsv = qc_dir / f"sub-{sub_id}_missingdata_qc.tsv"   # 每个 subject 单独一个文件
+    fieldnames = [
+        "subject","session","task", "run",
+        "n_samples",
+        "missing_samples","missing_pct",
+        "interpolated_samples","interpolated_pct",
+        "missing_reason"
+    ]
+
+    with qc_tsv.open("w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames, delimiter="\t")
+        writer.writeheader()
+    return qc_tsv
+
+def generate_qc_row(qc_tsv_path, data_st, sub_id, ses_id, mapped_task_name, run_num, reason="occasional packet loss due to varying wireless conditions"):
+    signals = data_st["signals"]  # (N, C)
+    interp_mask = data_st["interp_mask"]  # (N,)
+    N = int(signals.shape[0])
+
+    if getattr(interp_mask, "ndim", 1) == 2:
+        interp_t = (interp_mask == 1).any(axis=1)
+    else:
+        interp_t = (interp_mask == 1)
+
+    if N == 0:
+        interpolated_samples = 0
+        interpolated_pct = 0.00
+        n_samples = 0
+    else:
+        interpolated_samples = int(np.count_nonzero(interp_t))
+        interpolated_pct = round(100.0 * interpolated_samples / N, 2)
+        n_samples = N
+        
+    missing_samples = interpolated_samples
+    missing_pct = interpolated_pct
+
+    row = {
+        "subject": f"sub-{sub_id}",
+        "session": f"ses-{ses_id}",
+        "task": mapped_task_name,
+        "run": f"run-{run_num:02d}",
+        "n_samples": n_samples,
+        "missing_samples": missing_samples,
+        "missing_pct": f"{missing_pct:.2f}",
+        "interpolated_samples": interpolated_samples,
+        "interpolated_pct": f"{interpolated_pct:.2f}",
+        "missing_reason": reason,
+    }
+    fieldnames = [
+        "subject","session","task", "run",
+        "n_samples",
+        "missing_samples","missing_pct",
+        "interpolated_samples","interpolated_pct",
+        "missing_reason"
+    ]
+    with qc_tsv_path.open("a", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames, delimiter="\t")
+        writer.writerow(row)
+
 def get_post_op_day(date_str: str, surgery_date_str: str = "20240501") -> int:
     """
     Calculate the post-operative day based on measurement date and surgery date.
