@@ -431,11 +431,8 @@ def create_ieeg_json_file(
     electrical_stimulation_parameters: str = "n/a",
     # —— Minimal recommended keys —__
     device_serial_number: str = "n/a",
-    epoch_length: str = "n/a",
     ieeg_electrode_groups: str = "n/a",
     subject_artefact_description: str = "n/a",
-    cog_atlas_id: str = "n/a",
-    cogpo_id: str = "n/a",
 ) -> None:
     # Sampling rate and duration
     sfreq = data_meta.get("sampling_rate", DEFAULT_SAMPLING_FREQUENCY)
@@ -487,11 +484,8 @@ def create_ieeg_json_file(
 
         # —— Minimal recommended keys —__
         "DeviceSerialNumber": device_serial_number,
-        "EpochLength": epoch_length,
         "iEEGElectrodeGroups": ieeg_electrode_groups,
         "SubjectArtefactDescription": subject_artefact_description,
-        "CogAtlasID": cog_atlas_id,
-        "CogPOID": cogpo_id,
 
         # —— Channel counts —__
         "ECOGChannelCount": ecog_count,
@@ -636,7 +630,7 @@ def get_default_channel_data(channel_names: List[str]) -> Dict[str, Dict[str, An
         elif ch_name.startswith("TR"):
             default_channels[ch_name] = {
                 "name": ch_name,
-                "type": "TRIGGER",
+                "type": "TRIG",
                 "units": "n/a",
                 "low_cutoff": "n/a",
                 "high_cutoff": "n/a",
@@ -741,7 +735,7 @@ def load_impedance_as_dict(
         all_files = os.listdir(impedance_source_dir)
     except Exception as e:
         logger.error(f"Failed to list files in {impedance_source_dir}: {e}")
-        return {f"CH{i+1:02d}": np.nan for i in range(32)}
+        return {f"CH{i+1:02d}": "n/a" for i in range(32)}
 
     # Filter CSVs for the given date prefix
     impedance_files = [
@@ -753,7 +747,7 @@ def load_impedance_as_dict(
 
     if not impedance_files:
         logger.info(f"No impedance files found for date {date_str}.")
-        return {f"CH{i+1:02d}": np.nan for i in range(32)}
+        return {f"CH{i+1:02d}": "n/a" for i in range(32)}
 
     # Use the latest file (lexicographically greatest) for the day
     latest_file = sorted(impedance_files)[-1]
@@ -765,19 +759,19 @@ def load_impedance_as_dict(
             rows = list(reader)
     except Exception as e:
         logger.error(f"Error reading {latest_path}: {e}")
-        return {f"CH{i+1:02d}": np.nan for i in range(32)}
+        return {f"CH{i+1:02d}": "n/a" for i in range(32)}
 
     if len(rows) != 32:
         logger.warning(
             f"{latest_path} does not have 32 rows (actual: {len(rows)})."
         )
-        return {f"CH{i+1:02d}": np.nan for i in range(32)}
+        return {f"CH{i+1:02d}": "n/a" for i in range(32)}
 
     impedance: Dict[str, float] = {}
     for idx, row in enumerate(rows):
         ch_name = f"CH{idx+1:02d}"
         if not row:
-            impedance[ch_name] = np.nan
+            impedance[ch_name] = "n/a"
             continue
         raw_val = row[0].strip()
         try:
@@ -786,7 +780,7 @@ def load_impedance_as_dict(
             logger.warning(
                 f"{latest_path}: cannot parse impedance '{raw_val}' for {ch_name}; set NaN."
             )
-            val = np.nan
+            val = "n/a"
         impedance[ch_name] = val
 
     # If everything is NaN
@@ -919,7 +913,7 @@ def create_electrodes_tsv(sub_id: str,
             x = _num_or_na(x)
             y = _num_or_na(y)
             z = _num_or_na(z)
-
+            
             # impedance 来自传入的 impedance dict，否则 'n/a'
             if impedance and isinstance(impedance, dict) and name in impedance: 
                 try:
@@ -938,7 +932,7 @@ def create_electrodes_tsv(sub_id: str,
                     imp_val = float(impedance[nm])
                 except Exception:
                     imp_val = "n/a"
-            rows.append([nm, "n/a", "n/a", "n/a", "n/a", "n/a", "n/a", "n/a", "n/a", "n/a", imp_val])
+            rows.append([nm, "n/a", "n/a", "n/a", "n/a", "n/a", "n/a", "n/a", "n/a", imp_val])
         logger.info("[electrodes.tsv] COORDINATE not found; wrote fallback CH01..CH32 with 'n/a' coords.")
 
     # 写文件

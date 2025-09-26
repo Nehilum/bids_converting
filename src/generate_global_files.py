@@ -31,7 +31,7 @@ def generate_changes(bids_root: Path):
         "Event files included only for curated and validated runs.",
         "Created /stimuli/ directory.",
     ]
-    out = bids_root / "CHANGES.md"
+    out = bids_root / "CHANGES"
     out.write_text("\n".join(text), encoding="utf-8")
     print(f"[INFO] Generated: {out}")
 

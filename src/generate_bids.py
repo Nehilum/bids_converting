@@ -118,11 +118,6 @@ def process_subject(monkey_name: str, data_config: dict, logger: logging.Logger,
     dates_filtered = [d for d in dates_sorted if start_date <= datetime.strptime(d, "%Y%m%d") <= end_date]
     logger.debug(f"Date folders within specified range: {dates_filtered}")
 
-    # # Create electrodes and coordsystem files if they don't exist
-    # create_electrodes_tsv(sub_id=sub_id, ses_id=None, bids_root=str(config.DEFAULT_BIDS_ROOT), logger=logger)
-    # create_coordsystem_json_fallback(sub_id=sub_id, ses_id=None, bids_root=str(config.DEFAULT_BIDS_ROOT), logger=logger)
-    # create_electrodes_json(sub_id=sub_id, ses_id=None, bids_root=str(config.DEFAULT_BIDS_ROOT), logger=logger)
-
     # Process each date folder
     for date_str in dates_filtered:
         process_date(monkey_name, sub_id, date_str, op_day_str,
